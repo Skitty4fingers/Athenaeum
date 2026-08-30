@@ -1,0 +1,180 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+/**
+ * VoxSilo palette.
+ *
+ * Dark-first: a listening app is used in the evening far more than at noon, so
+ * the dark theme is the designed one and light is the careful adaptation. The
+ * neutrals carry a slight cool cast (hue 285) so they sit under the violet
+ * accent without reading as muddy brown.
+ */
+:root {
+  --radius: 0.75rem;
+
+  --background: oklch(0.994 0.002 285);
+  --foreground: oklch(0.185 0.012 285);
+
+  --card: oklch(1 0 0);
+  --card-foreground: var(--foreground);
+  --popover: oklch(1 0 0);
+  --popover-foreground: var(--foreground);
+
+  --primary: oklch(0.556 0.208 295);
+  --primary-foreground: oklch(0.99 0.005 295);
+
+  --secondary: oklch(0.965 0.005 285);
+  --secondary-foreground: oklch(0.26 0.014 285);
+
+  --muted: oklch(0.965 0.005 285);
+  --muted-foreground: oklch(0.53 0.014 285);
+
+  --accent: oklch(0.955 0.014 295);
+  --accent-foreground: oklch(0.32 0.06 295);
+
+  --destructive: oklch(0.585 0.216 27);
+  --destructive-foreground: oklch(0.985 0.005 27);
+
+  --border: oklch(0.916 0.006 285);
+  --input: oklch(0.916 0.006 285);
+  --ring: oklch(0.556 0.208 295);
+
+  /* Warm counterpoint to the violet — used for playback/progress affordances so
+     "currently playing" is distinguishable from ordinary primary actions. */
+  --playing: oklch(0.72 0.164 62);
+  --playing-foreground: oklch(0.22 0.05 62);
+
+  --chart-1: oklch(0.556 0.208 295);
+  --chart-2: oklch(0.65 0.152 195);
+  --chart-3: oklch(0.72 0.164 62);
+  --chart-4: oklch(0.62 0.19 340);
+  --chart-5: oklch(0.68 0.15 145);
+
+  --sidebar: oklch(0.978 0.004 285);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: oklch(0.945 0.012 295);
+  --sidebar-accent-foreground: oklch(0.3 0.05 295);
+  --sidebar-border: oklch(0.91 0.006 285);
+  --sidebar-ring: var(--ring);
+}
+
+.dark {
+  --background: oklch(0.165 0.011 285);
+  --foreground: oklch(0.965 0.004 285);
+
+  /* Cards sit *above* the background rather than below it, which is what makes
+     a dark UI read as layered instead of flat. */
+  --card: oklch(0.212 0.013 285);
+  --card-foreground: var(--foreground);
+  --popover: oklch(0.228 0.014 285);
+  --popover-foreground: var(--foreground);
+
+  --primary: oklch(0.685 0.178 295);
+  --primary-foreground: oklch(0.16 0.04 295);
+
+  --secondary: oklch(0.262 0.015 285);
+  --secondary-foreground: oklch(0.965 0.004 285);
+
+  --muted: oklch(0.255 0.014 285);
+  --muted-foreground: oklch(0.715 0.015 285);
+
+  --accent: oklch(0.298 0.036 295);
+  --accent-foreground: oklch(0.94 0.02 295);
+
+  --destructive: oklch(0.665 0.19 25);
+  --destructive-foreground: oklch(0.16 0.04 25);
+
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: oklch(0.685 0.178 295);
+
+  --playing: oklch(0.79 0.152 68);
+  --playing-foreground: oklch(0.19 0.05 68);
+
+  --chart-1: oklch(0.685 0.178 295);
+  --chart-2: oklch(0.72 0.13 195);
+  --chart-3: oklch(0.79 0.152 68);
+  --chart-4: oklch(0.7 0.17 340);
+  --chart-5: oklch(0.74 0.14 145);
+
+  --sidebar: oklch(0.192 0.012 285);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: oklch(0.278 0.03 295);
+  --sidebar-accent-foreground: oklch(0.94 0.02 295);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: var(--ring);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-playing: var(--playing);
+  --color-playing-foreground: var(--playing-foreground);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-synthesis-weight: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Cover art is the primary visual content of this app; keep it crisp when
+     scaled down into dense grids. */
+  img {
+    image-rendering: -webkit-optimize-contrast;
+  }
+}
+
+@utility scrollbar-slim {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}

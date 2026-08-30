@@ -1,0 +1,14 @@
+{
+  "name": "voxsilo-openlibrary-provider",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Open Library metadata provider implementing the audiobookshelf custom provider contract",
+  "main": "index.mjs",
+  "scripts": {
+    "start": "node index.mjs"
+  },
+  "engines": {
+    "node": ">=20.19"
+  }
+}

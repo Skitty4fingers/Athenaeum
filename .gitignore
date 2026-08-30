@@ -1,0 +1,23 @@
+# Real audiobook content — personal library, large binary files, and in most
+# cases copyrighted. Only the folder's own documentation is tracked.
+/media/audiobooks/*
+!/media/audiobooks/README.md
+
+# Node / JS tooling, wherever a package.json ends up under the tree.
+# (audiobookshelf/ carries its own more detailed .gitignore in addition to
+# this — both apply, since git honors nested .gitignore files.)
+node_modules/
+dist/
+*.tsbuildinfo
+npm-debug.log*
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+*.swp
+
+# Local env / secrets
+.env
+.env.local
