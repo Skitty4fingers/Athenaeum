@@ -34,7 +34,11 @@
   --accent: oklch(0.955 0.014 295);
   --accent-foreground: oklch(0.32 0.06 295);
 
-  --destructive: oklch(0.585 0.216 27);
+  /* Slightly deeper than a "natural" red at this chroma — the lighter version
+     measured 4.47:1 against --destructive-foreground, just under WCAG AA's
+     4.5:1 for normal text (button labels don't qualify for the large-text
+     exception). This clears it at ~5.2:1 without a visible hue shift. */
+  --destructive: oklch(0.55 0.216 27);
   --destructive-foreground: oklch(0.985 0.005 27);
 
   --border: oklch(0.916 0.006 285);

@@ -20,7 +20,7 @@ The Libation sidecars already give excellent *audiobook* metadata. What they can
 ## Running
 
 ```bash
-PROVIDER_API_KEY=voxsilo-dev-ol-key PORT=3444 node services/openlibrary-provider/index.mjs
+PROVIDER_API_KEY="$(openssl rand -hex 32)" PORT=3444 node services/openlibrary-provider/index.mjs
 ```
 
 | Env | Default | Meaning |
@@ -38,7 +38,7 @@ One-time; it persists in the audiobookshelf database.
 ```bash
 curl -X POST "http://localhost:3333/audiobookshelf/api/custom-metadata-providers" \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"name":"Open Library","url":"http://localhost:3444","mediaType":"book","authHeaderValue":"voxsilo-dev-ol-key"}'
+  -d '{"name":"Open Library","url":"http://localhost:3444","mediaType":"book","authHeaderValue":"<the same key you started the service with>"}'
 ```
 
 `mediaType` is required — omitting it returns a bare `Invalid request body`.

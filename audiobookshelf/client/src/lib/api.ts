@@ -193,3 +193,12 @@ export function coverUrl(itemId: string, opts: { width?: number; height?: number
   const qs = params.toString()
   return `${apiPath}/items/${itemId}/cover${qs ? `?${qs}` : ''}`
 }
+
+/** Same ignore-pattern exemption as `coverUrl` — plain `<img src>` works unauthenticated. */
+export function authorImageUrl(authorId: string, opts: { width?: number; ts?: number } = {}) {
+  const params = new URLSearchParams()
+  if (opts.width) params.set('width', String(opts.width))
+  if (opts.ts) params.set('ts', String(opts.ts))
+  const qs = params.toString()
+  return `${apiPath}/authors/${authorId}/image${qs ? `?${qs}` : ''}`
+}

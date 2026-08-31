@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Play } from 'lucide-react'
+import { Check, Play } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 import { coverUrl } from '@/lib/api'
@@ -50,19 +50,29 @@ interface BookCardProps {
   onPlay?: (item: LibraryItemMinified) => void
   /** Series position, shown as a corner badge in series-ordered views. */
   sequence?: string | null
+  /** When set, the card becomes a selection toggle instead of a link — used by multi-select mode on the grid. */
+  selection?: { selected: boolean; onToggle: () => void }
 }
 
-export function BookCard({ item, progress = 0, isFinished = false, onPlay, sequence }: BookCardProps) {
+export function BookCard({ item, progress = 0, isFinished = false, onPlay, sequence, selection }: BookCardProps) {
   const [imageFailed, setImageFailed] = useState(false)
   const display = toDisplay(item, progress, isFinished)
 
   return (
     <article className="group relative flex flex-col gap-2.5">
       {/* The cover is the click target for the whole card; the title below links
-          to the same place so the hit area is generous without nesting links. */}
-      <Link to={`/item/${item.id}`} aria-label={display.title} className="absolute inset-0 z-10 rounded-xl focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring" />
+          to the same place so the hit area is generous without nesting links.
+          In selection mode this becomes a toggle button instead of a navigation link. */}
+      {selection ? (
+        <button type="button" onClick={selection.onToggle} aria-label={`${selection.selected ? 'Deselect' : 'Select'} ${display.title}`} aria-pressed={selection.selected} className="absolute inset-0 z-10 rounded-xl focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring" />
+      ) : (
+        <Link to={`/item/${item.id}`} aria-label={display.title} className="absolute inset-0 z-10 rounded-xl focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring" />
+      )}
 
-      <div className="relative aspect-[2/3] overflow-hidden rounded-xl border bg-muted shadow-sm transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-xl group-hover:shadow-black/20">
+      <div className={cn('relative aspect-[2/3] overflow-hidden rounded-xl border bg-muted shadow-sm transition-all duration-300', selection?.selected ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : 'group-hover:-translate-y-1 group-hover:shadow-xl group-hover:shadow-black/20')}>
+        {selection && (
+          <div className={cn('absolute left-2.5 top-2.5 z-20 flex size-6 items-center justify-center rounded-md border-2 backdrop-blur-sm transition-colors', selection.selected ? 'border-primary bg-primary text-primary-foreground' : 'border-white/70 bg-black/30')}>{selection.selected && <Check className="size-3.5" />}</div>
+        )}
         {imageFailed ? (
           // Scanned libraries routinely have items with no artwork; a typographic
           // fallback keeps the grid rhythm instead of leaving a hole.
@@ -75,7 +85,7 @@ export function BookCard({ item, progress = 0, isFinished = false, onPlay, seque
 
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/0 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
 
-        {onPlay && (
+        {onPlay && !selection && (
           <Button
             size="icon"
             aria-label={`Play ${display.title}`}

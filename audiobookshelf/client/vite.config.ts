@@ -26,6 +26,9 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: 3000,
+      // Bind every interface, not just localhost, so the dev server is reachable
+      // from a phone or tablet on the same LAN for real mobile testing.
+      host: true,
       proxy: {
         ...Object.fromEntries(serverPaths.map((p) => [`${base}/${p}`, { target, changeOrigin: true }])),
         [`${base}/socket.io`]: { target, ws: true, changeOrigin: true }
@@ -34,7 +37,17 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: 'dist',
       emptyOutDir: true,
-      sourcemap: mode !== 'production'
+      sourcemap: mode !== 'production',
+      rollupOptions: {
+        output: {
+          // Third-party code changes far less often than app code, so it goes
+          // in its own chunk — the browser caches it across VoxSilo releases.
+          // Route-level React.lazy() in App.tsx handles the rest of the split.
+          manualChunks(id) {
+            if (id.includes('node_modules')) return 'vendor'
+          }
+        }
+      }
     }
   }
 })

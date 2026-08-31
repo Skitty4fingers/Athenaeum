@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import App from './App'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { ThemeProvider } from '@/components/theme-provider'
 import { Toaster } from '@/components/ui/sonner'
 import { basePath } from '@/lib/config'
@@ -14,7 +15,10 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 30_000,
-      refetchOnWindowFocus: false,
+      // Other clients (the official app, ShelfPlayer, Absorb...) write progress
+      // to the same server. Refetch on focus so switching back to this tab
+      // after listening elsewhere doesn't show a stale position.
+      refetchOnWindowFocus: true,
       retry: (failureCount, error) => {
         // Auth and permission failures are terminal — the api client has
         // already tried a token refresh by the time the error surfaces here.
@@ -27,13 +31,15 @@ const queryClient = new QueryClient({
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <BrowserRouter basename={basePath || undefined}>
-          <App />
-        </BrowserRouter>
-        <Toaster position="bottom-right" richColors />
-      </ThemeProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <BrowserRouter basename={basePath || undefined}>
+            <App />
+          </BrowserRouter>
+          <Toaster position="bottom-right" richColors />
+        </ThemeProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   </StrictMode>
 )

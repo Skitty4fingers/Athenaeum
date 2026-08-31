@@ -14,6 +14,12 @@ export interface MetadataProvider {
   name: string
   mediaType: string
   url: string
+  /**
+   * The server returns this in plaintext (see
+   * CustomMetadataProviderController#getAll — no field-level exclusion), but
+   * the settings UI never displays the raw value, only whether one is set.
+   */
+  authHeaderValue: string | null
 }
 
 /** A candidate returned by a provider, already normalised by audiobookshelf. */

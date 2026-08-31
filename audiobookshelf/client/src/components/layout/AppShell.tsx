@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Outlet } from 'react-router-dom'
-import { LogOut, Menu, Search, User as UserIcon } from 'lucide-react'
+import { Link, Outlet, useLocation } from 'react-router-dom'
+import { Suspense } from 'react'
+import { BarChart3, DatabaseBackup, HelpCircle, LogOut, Menu, Search, Settings, User as UserIcon, Users } from 'lucide-react'
 import { useTheme } from 'next-themes'
 
 import { Button } from '@/components/ui/button'
@@ -10,7 +11,9 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { ThemeSwitcher } from '@/components/kibo-ui/theme-switcher'
 import { SidebarContent } from './Sidebar'
 import { CommandPalette } from './CommandPalette'
+import { Spinner } from '@/components/kibo-ui/spinner'
 import { PlayerBar } from '@/features/player/PlayerBar'
+import { ResumePrompt } from '@/features/player/ResumePrompt'
 import { usePlayerStore } from '@/stores/player'
 import { useAuthStore } from '@/stores/auth'
 
@@ -24,21 +27,32 @@ export function AppShell() {
   const logout = useAuthStore((s) => s.logout)
   const { theme, setTheme } = useTheme()
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  // NowPlayingPage is a full-screen route, not a Radix dialog, so nothing
+  // traps focus inside it by default — the sidebar and header stay mounted
+  // underneath (AppShell is the layout, not per-route) and stay reachable by
+  // Tab despite being visually covered. `inert` removes them from the a11y
+  // tree and tab order entirely while that route is active.
+  const location = useLocation()
+  const isNowPlaying = location.pathname.endsWith('/now-playing')
   const playerActive = usePlayerStore((s) => Boolean(s.session))
+  // The resume prompt occupies the same bottom bar once the player itself
+  // isn't — the two are mutually exclusive, so this doesn't double up.
+  const resumePending = usePlayerStore((s) => !s.session && Boolean(s.resumeItemId))
 
   const initials = (user?.username ?? '?').slice(0, 2).toUpperCase()
+  const isAdmin = user?.type === 'root' || user?.type === 'admin'
 
   return (
     <div className="min-h-svh bg-background">
       <CommandPalette />
 
       {/* Persistent rail on desktop */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 border-r bg-sidebar lg:block">
+      <aside inert={isNowPlaying} className="fixed inset-y-0 left-0 z-30 hidden w-60 border-r bg-sidebar lg:block">
         <SidebarContent />
       </aside>
 
       <div className="lg:pl-60">
-        <header className="sticky top-0 z-20 flex h-14 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur-md">
+        <header inert={isNowPlaying} className="sticky top-0 z-20 flex h-14 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur-md">
           <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
             <SheetTrigger asChild>
               <Button variant="ghost" size="icon" className="lg:hidden" aria-label="Open navigation">
@@ -74,8 +88,41 @@ export function AppShell() {
                   <span className="text-xs font-normal capitalize text-muted-foreground">{user?.type}</span>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem disabled>
-                  <UserIcon className="size-4" /> Account settings
+                {isAdmin && (
+                  <DropdownMenuItem asChild>
+                    <Link to="/settings">
+                      <Settings className="size-4" /> Library settings
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+                {isAdmin && (
+                  <DropdownMenuItem asChild>
+                    <Link to="/users">
+                      <Users className="size-4" /> User management
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+                {isAdmin && (
+                  <DropdownMenuItem asChild>
+                    <Link to="/system">
+                      <DatabaseBackup className="size-4" /> System settings
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem asChild>
+                  <Link to="/account">
+                    <UserIcon className="size-4" /> Account settings
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link to="/stats">
+                    <BarChart3 className="size-4" /> Listening stats
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link to="/help">
+                    <HelpCircle className="size-4" /> Help &amp; mobile apps
+                  </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem variant="destructive" onSelect={() => void logout()}>
@@ -86,13 +133,21 @@ export function AppShell() {
           </div>
         </header>
 
-        {/* Bottom padding keeps the last row of content clear of the player bar. */}
-        <main className={playerActive ? 'pb-28' : undefined}>
-          <Outlet />
+        {/* Bottom padding keeps the last row of content clear of the player bar or resume prompt. */}
+        <main className={playerActive ? 'pb-28' : resumePending ? 'pb-16' : undefined}>
+          <Suspense fallback={<div className="flex justify-center py-24"><Spinner variant="ring" size={28} className="text-muted-foreground" /></div>}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
 
-      <PlayerBar />
+      {/* The mini player sits behind NowPlayingPage's full-screen overlay (z-40
+          vs z-50) but stays mounted underneath — same `inert` treatment as the
+          sidebar/header, or its controls would still be reachable by Tab. */}
+      <div inert={isNowPlaying}>
+        <PlayerBar />
+        <ResumePrompt />
+      </div>
     </div>
   )
 }

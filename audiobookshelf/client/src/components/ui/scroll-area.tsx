@@ -18,7 +18,15 @@ function ScrollArea({
     >
       <ScrollAreaPrimitive.Viewport
         data-slot="scroll-area-viewport"
-        className="size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1"
+        // Radix wraps the viewport's children in its own `display: table` div
+        // (for scrollbar-thumb sizing). A table sizes to its content's natural
+        // width rather than the container, so full-width flex/block children
+        // with variable-width text (e.g. a real narrator or genre name) can
+        // blow the table wider than the sidebar — every row then shares that
+        // inflated width and gets clipped by the outer overflow-hidden,
+        // visually truncating unrelated content like "All books 175". Forcing
+        // the wrapper back to block layout is Radix's own documented fix.
+        className="size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 [&>div]:!block"
       >
         {children}
       </ScrollAreaPrimitive.Viewport>

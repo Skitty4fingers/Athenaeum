@@ -1,4 +1,8 @@
 .env
+# ...except the client's own .env, which holds committed *defaults* (currently
+# just VITE_APP_NAME) rather than secrets — a deployer overrides it locally
+# via client/.env.local, which stays covered by the blanket rule above.
+!/client/.env
 /dev.js
 /dev-config/
 /dev-metadata/
@@ -16,6 +20,9 @@
 /deploy/
 /coverage/
 /.nyc_output/
+/client/playwright-report/
+/client/test-results/
+/client/playwright/.cache/
 /ffmpeg*
 /ffprobe*
 /unicode*

@@ -50,6 +50,8 @@ class ServerSettings {
     this.sortingPrefixes = ['the', 'a']
 
     // Misc Flags
+    /** @type {string|null} Deployer-configurable client display name (VoxSilo, ShelfPlayer, etc). Null falls back to the client's own build-time default. */
+    this.customAppName = null
     this.chromecastEnabled = false
     this.dateFormat = 'MM/dd/yyyy'
     this.timeFormat = 'HH:mm'
@@ -118,6 +120,7 @@ class ServerSettings {
 
     this.sortingIgnorePrefix = !!settings.sortingIgnorePrefix
     this.sortingPrefixes = settings.sortingPrefixes || ['the']
+    this.customAppName = settings.customAppName || null
     this.chromecastEnabled = !!settings.chromecastEnabled
     this.dateFormat = settings.dateFormat || 'MM/dd/yyyy'
     this.timeFormat = settings.timeFormat || 'HH:mm'
@@ -230,6 +233,7 @@ class ServerSettings {
       podcastEpisodeSchedule: this.podcastEpisodeSchedule,
       sortingIgnorePrefix: this.sortingIgnorePrefix,
       sortingPrefixes: [...this.sortingPrefixes],
+      customAppName: this.customAppName,
       chromecastEnabled: this.chromecastEnabled,
       dateFormat: this.dateFormat,
       timeFormat: this.timeFormat,

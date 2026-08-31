@@ -11,6 +11,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Spinner } from '@/components/kibo-ui/spinner'
 import { chapterAt, usePlayerStore } from '@/stores/player'
+import { BookmarksMenu } from './BookmarksMenu'
+import { SleepTimerMenu } from './SleepTimerMenu'
+import { UpNextStrip } from './UpNextStrip'
 
 const SPEEDS = [0.75, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3]
 
@@ -23,6 +26,8 @@ export function PlayerBar() {
   const duration = usePlayerStore((s) => s.duration)
   const playbackRate = usePlayerStore((s) => s.playbackRate)
   const volume = usePlayerStore((s) => s.volume)
+  const jumpBackwardAmount = usePlayerStore((s) => s.jumpBackwardAmount)
+  const jumpForwardAmount = usePlayerStore((s) => s.jumpForwardAmount)
   const error = usePlayerStore((s) => s.error)
 
   const toggle = usePlayerStore((s) => s.toggle)
@@ -49,14 +54,14 @@ export function PlayerBar() {
         event.preventDefault()
         toggle()
       } else if (event.code === 'ArrowRight' && !event.shiftKey) {
-        skip(30)
+        skip(jumpForwardAmount)
       } else if (event.code === 'ArrowLeft' && !event.shiftKey) {
-        skip(-15)
+        skip(-jumpBackwardAmount)
       }
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [session, toggle, skip])
+  }, [session, toggle, skip, jumpForwardAmount, jumpBackwardAmount])
 
   if (!session || !item) return null
 
@@ -67,6 +72,8 @@ export function PlayerBar() {
   return (
     <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 backdrop-blur-md">
       {error && <p className="bg-destructive/10 px-4 py-1.5 text-center text-xs text-destructive">{error}</p>}
+
+      <UpNextStrip />
 
       {/* Scrubber sits flush against the top edge so it reads as a progress line. */}
       <div className="px-3 pt-2">
@@ -84,7 +91,9 @@ export function PlayerBar() {
       </div>
 
       <div className="flex items-center gap-3 px-3 pb-2.5 pt-1.5 sm:gap-4 sm:px-4">
-        <Link to={`/item/${item.id}`} className="flex min-w-0 flex-1 items-center gap-3 sm:w-64 sm:flex-none">
+        {/* Cover + title open the full Now Playing screen; the transport
+            buttons to the right keep their own click handlers regardless. */}
+        <Link to="/now-playing" className="flex min-w-0 flex-1 items-center gap-3 sm:w-64 sm:flex-none">
           <img src={coverUrl(item.id, { width: 96, ts: item.updatedAt })} alt="" className="size-11 shrink-0 rounded-md object-cover" onError={(e) => (e.currentTarget.style.visibility = 'hidden')} />
           <div className="min-w-0">
             <p className="truncate text-sm font-medium leading-tight">{session.displayTitle}</p>
@@ -96,7 +105,7 @@ export function PlayerBar() {
           <Button variant="ghost" size="icon" onClick={previousChapter} aria-label="Previous chapter" className="hidden sm:inline-flex">
             <SkipBack className="size-4" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={() => skip(-15)} aria-label="Back 15 seconds">
+          <Button variant="ghost" size="icon" onClick={() => skip(-jumpBackwardAmount)} aria-label={`Back ${jumpBackwardAmount} seconds`}>
             <RotateCcw className="size-4" />
           </Button>
 
@@ -104,7 +113,7 @@ export function PlayerBar() {
             {isLoading ? <Spinner variant="ring" size={16} /> : isPlaying ? <Pause className="size-4 fill-current" /> : <Play className="size-4 fill-current" />}
           </Button>
 
-          <Button variant="ghost" size="icon" onClick={() => skip(30)} aria-label="Forward 30 seconds">
+          <Button variant="ghost" size="icon" onClick={() => skip(jumpForwardAmount)} aria-label={`Forward ${jumpForwardAmount} seconds`}>
             <RotateCw className="size-4" />
           </Button>
           <Button variant="ghost" size="icon" onClick={nextChapter} aria-label="Next chapter" className="hidden sm:inline-flex">
@@ -165,6 +174,9 @@ export function PlayerBar() {
               ))}
             </PopoverContent>
           </Popover>
+
+          <BookmarksMenu buttonClassName="hidden sm:inline-flex" />
+          <SleepTimerMenu buttonClassName="hidden sm:inline-flex" />
 
           <div className="hidden items-center gap-1.5 lg:flex">
             <Button variant="ghost" size="icon" onClick={() => setVolume(volume > 0 ? 0 : 1)} aria-label={volume > 0 ? 'Mute' : 'Unmute'}>

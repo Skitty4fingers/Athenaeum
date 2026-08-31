@@ -6,11 +6,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Spinner } from '@/components/kibo-ui/spinner'
-import { useAuthStore } from '@/stores/auth'
-import { appName } from '@/lib/config'
+import { useAppName, useAuthStore } from '@/stores/auth'
 
 export function LoginPage() {
   const location = useLocation()
+  const appName = useAppName()
   const status = useAuthStore((s) => s.status)
   const error = useAuthStore((s) => s.error)
   const login = useAuthStore((s) => s.login)
@@ -27,7 +27,7 @@ export function LoginPage() {
 
   if (status === 'authenticated') {
     const from = (location.state as { from?: Location } | null)?.from?.pathname
-    return <Navigate to={from && from !== '/login' ? from : '/'} replace />
+    return <Navigate to={from && from !== '/signin' ? from : '/'} replace />
   }
 
   async function onSubmit(event: React.FormEvent) {

@@ -394,31 +394,25 @@ class Server {
       const distPath = Path.join(global.appRoot, '/client/dist')
       router.use(express.static(distPath))
 
-      // Client dynamic routes
-      const dynamicRoutes = [
-        '/item/:id',
-        '/author/:id',
-        '/audiobook/:id/chapters',
-        '/audiobook/:id/edit',
-        '/audiobook/:id/manage',
-        '/library/:library',
-        '/library/:library/search',
-        '/library/:library/bookshelf/:id?',
-        '/library/:library/authors',
-        '/library/:library/narrators',
-        '/library/:library/stats',
-        '/library/:library/series/:id?',
-        '/library/:library/podcast/search',
-        '/library/:library/podcast/latest',
-        '/library/:library/podcast/download-queue',
-        '/config/users/:id',
-        '/config/users/:id/sessions',
-        '/config/item-metadata-utils/:id',
-        '/collection/:id',
-        '/playlist/:id',
-        '/share/:slug'
-      ]
-      dynamicRoutes.forEach((route) => router.get(route, (req, res) => res.sendFile(Path.join(distPath, 'index.html'))))
+      // Client-side routes: any GET that isn't a static asset and doesn't belong
+      // to the server's own surface gets the SPA shell, and the client's router
+      // resolves the real path from there. This replaces an enumerated route
+      // list that silently drifted out of sync with the client — VoxSilo added
+      // routes (e.g. /series/:id) that were never added here, so a hard reload
+      // or a shared link 404'd instead of loading the app. See docs/PLAN.md.
+      //
+      // The guard matters: without it, a typo'd path under one of these
+      // prefixes (e.g. authenticated GET /api/nonexistent, which today 404s
+      // with a plain Express response) would instead return a 200 with the
+      // SPA's index.html, masking a real error as a working page.
+      const serverOwnedPrefixes = ['/api/', '/hls/', '/public/', '/feed/', '/auth/']
+      const serverOwnedExact = ['/login', '/logout', '/init', '/status', '/ping', '/healthcheck']
+      router.get('*', (req, res, next) => {
+        if (serverOwnedExact.includes(req.path) || serverOwnedPrefixes.some((prefix) => req.path.startsWith(prefix))) {
+          return next()
+        }
+        res.sendFile(Path.join(distPath, 'index.html'))
+      })
     } else {
       // This is for using the experimental Next.js client
       Logger.info(`Using React client at ${ReactClientPath}`)

@@ -16,4 +16,11 @@ export const apiPath = `${basePath}/api`
 /** Socket.IO mounts at `<base>/socket.io` (see server/SocketAuthority.js). */
 export const socketPath = `${basePath}/socket.io`
 
-export const appName = 'VoxSilo'
+/**
+ * Build-time default app name — baked into `index.html`'s `<title>` via
+ * Vite's `%VITE_APP_NAME%` substitution, and used before a session (and its
+ * `serverSettings`) has loaded. Set `VITE_APP_NAME` in `client/.env.local`
+ * (gitignored — see `client/.env` for the committed default) to change it
+ * for everyone who isn't running with an admin-configured override.
+ */
+export const defaultAppName = import.meta.env.VITE_APP_NAME || 'VoxSilo'

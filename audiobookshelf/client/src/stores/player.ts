@@ -1,7 +1,9 @@
 import { create } from 'zustand'
 import { api, getAccessToken } from '@/lib/api'
 import { apiPath } from '@/lib/config'
-import type { BookMediaMinified, LibraryItemMinified } from '@/types/abs'
+import { getAppName } from '@/stores/auth'
+import { encodeFilter } from '@/lib/filters'
+import type { BookMediaMinified, BookMetadataExpanded, LibraryItemMinified } from '@/types/abs'
 
 /**
  * Playback engine.
@@ -45,6 +47,25 @@ interface PlaybackSession {
 
 const RATE_STORAGE_KEY = 'voxsilo.playbackRate'
 const VOLUME_STORAGE_KEY = 'voxsilo.volume'
+const JUMP_BACKWARD_STORAGE_KEY = 'voxsilo.jumpBackwardAmount'
+const JUMP_FORWARD_STORAGE_KEY = 'voxsilo.jumpForwardAmount'
+/**
+ * The playback session itself lives only in memory (see module doc), so a
+ * reload always drops it. This key is the one thing that survives — just an
+ * item id, written whenever a session starts and cleared on an explicit
+ * close(), never on unmount. `ResumePrompt` reads it once on boot to offer
+ * "Continue listening to X" instead of silently resuming audio the user
+ * didn't ask to hear again.
+ */
+export const ACTIVE_ITEM_STORAGE_KEY = 'voxsilo.activeItemId'
+
+function readStoredItemId(): string | null {
+  try {
+    return localStorage.getItem(ACTIVE_ITEM_STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
 /** How often to report progress upstream while playing. */
 const SYNC_INTERVAL_MS = 15_000
 
@@ -71,6 +92,12 @@ let syncTimer: ReturnType<typeof setInterval> | null = null
 /** Seconds of real playback since the last successful sync. */
 let listenedSinceSync = 0
 let lastTickAt: number | null = null
+
+let sleepTimerInterval: ReturnType<typeof setInterval> | null = null
+/** The chapter id playback was in when "end of chapter" mode was armed — pause once we leave it. */
+let sleepTimerArmedChapterId: number | null = null
+/** Guards against a stale series lookup landing after the user has since moved on to a different book. */
+let upNextRequestId = 0
 
 function getAudio(): HTMLAudioElement {
   if (!audio) {
@@ -102,7 +129,16 @@ interface PlayerState {
   duration: number
   playbackRate: number
   volume: number
+  jumpBackwardAmount: number
+  jumpForwardAmount: number
   error: string | null
+  /** The item that was playing when this tab last loaded — null if none, or once dismissed. Captured once at boot; see ACTIVE_ITEM_STORAGE_KEY. */
+  resumeItemId: string | null
+  sleepTimerMode: 'duration' | 'chapter' | null
+  /** Only meaningful in 'duration' mode — null in 'chapter' mode and when no timer is set. */
+  sleepTimerSecondsRemaining: number | null
+  /** The next book in series order, once the current one finishes — null otherwise. */
+  upNext: LibraryItemMinified | null
 
   play: (item: LibraryItemMinified) => Promise<void>
   toggle: () => void
@@ -110,9 +146,16 @@ interface PlayerState {
   skip: (seconds: number) => void
   setRate: (rate: number) => void
   setVolume: (volume: number) => void
+  setJumpBackwardAmount: (seconds: number) => void
+  setJumpForwardAmount: (seconds: number) => void
+  dismissResume: () => void
   jumpToChapter: (chapter: Chapter) => void
   nextChapter: () => void
   previousChapter: () => void
+  setSleepTimerDuration: (minutes: number) => void
+  setSleepTimerEndOfChapter: () => void
+  cancelSleepTimer: () => void
+  dismissUpNext: () => void
   close: () => Promise<void>
 }
 
@@ -151,6 +194,48 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     }
   }
 
+  function stopSleepTimer() {
+    if (sleepTimerInterval) {
+      clearInterval(sleepTimerInterval)
+      sleepTimerInterval = null
+    }
+    sleepTimerArmedChapterId = null
+  }
+
+  function pauseForSleepTimer() {
+    stopSleepTimer()
+    set({ sleepTimerMode: null, sleepTimerSecondsRemaining: null })
+    getAudio().pause()
+  }
+
+  /**
+   * Looks up whether the item that just finished is part of a series with a
+   * next entry, for the "up next" prompt. `metadata.series` only comes back
+   * with real ids/sequences on the expanded item response (see
+   * `Book.oldMetadataToJSON` server-side) — the minified shape used
+   * everywhere else in the app just has a flattened `seriesName` string.
+   */
+  async function checkForNextInSeries(finishedItem: LibraryItemMinified) {
+    const requestId = ++upNextRequestId
+    try {
+      const expanded = await api.get<{ media: { metadata: BookMetadataExpanded } }>(`/items/${finishedItem.id}?expanded=1`)
+      const series = expanded.media.metadata.series?.find((s) => s.sequence)
+      if (!series) return
+
+      const params = new URLSearchParams({ limit: '200', minified: '1', sort: 'sequence', filter: encodeFilter('series', series.id) })
+      const page = await api.get<{ results: LibraryItemMinified[] }>(`/libraries/${finishedItem.libraryId}/items?${params}`)
+
+      // The user may have started something else entirely while this was in flight.
+      if (requestId !== upNextRequestId || get().item?.id !== finishedItem.id) return
+
+      const index = page.results.findIndex((b) => b.id === finishedItem.id)
+      const next = index >= 0 ? page.results[index + 1] : undefined
+      if (next) set({ upNext: next })
+    } catch {
+      // No series, a 404, or a network hiccup — either way, nothing to offer.
+    }
+  }
+
   /** Loads a track and positions it, without changing play/pause intent. */
   function loadTrack(index: number, offsetInTrack: number, autoplay: boolean) {
     const { session } = get()
@@ -168,11 +253,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
   }
 
   function trackForTime(globalTime: number): number {
-    const tracks = get().session?.audioTracks ?? []
-    for (let i = tracks.length - 1; i >= 0; i--) {
-      if (globalTime >= tracks[i].startOffset) return i
-    }
-    return 0
+    return findTrackIndexForTime(get().session?.audioTracks ?? [], globalTime)
   }
 
   function attachListeners() {
@@ -192,11 +273,19 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       }
       lastTickAt = now
 
-      set({ currentTime: track.startOffset + element.currentTime })
+      const globalTime = track.startOffset + element.currentTime
+      set({ currentTime: globalTime })
+
+      // "End of chapter" mode: pause the instant playback leaves the chapter
+      // it was armed in, rather than counting down a duration.
+      if (sleepTimerArmedChapterId !== null) {
+        const chapter = chapterAt(session?.chapters ?? [], globalTime)
+        if (chapter?.id !== sleepTimerArmedChapterId) pauseForSleepTimer()
+      }
     }
 
     element.onended = () => {
-      const { session, trackIndex } = get()
+      const { session, trackIndex, item } = get()
       if (!session) return
       const next = trackIndex + 1
       if (next < session.audioTracks.length) {
@@ -204,6 +293,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       } else {
         set({ isPlaying: false })
         void sync(true)
+        if (item) void checkForNextInSeries(item)
       }
     }
 
@@ -241,8 +331,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 
     navigator.mediaSession.setActionHandler('play', () => get().toggle())
     navigator.mediaSession.setActionHandler('pause', () => get().toggle())
-    navigator.mediaSession.setActionHandler('seekbackward', () => get().skip(-15))
-    navigator.mediaSession.setActionHandler('seekforward', () => get().skip(30))
+    navigator.mediaSession.setActionHandler('seekbackward', () => get().skip(-get().jumpBackwardAmount))
+    navigator.mediaSession.setActionHandler('seekforward', () => get().skip(get().jumpForwardAmount))
     navigator.mediaSession.setActionHandler('previoustrack', () => get().previousChapter())
     navigator.mediaSession.setActionHandler('nexttrack', () => get().nextChapter())
   }
@@ -257,7 +347,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     duration: 0,
     playbackRate: readStored(RATE_STORAGE_KEY, 1),
     volume: readStored(VOLUME_STORAGE_KEY, 1),
+    jumpBackwardAmount: readStored(JUMP_BACKWARD_STORAGE_KEY, 15),
+    jumpForwardAmount: readStored(JUMP_FORWARD_STORAGE_KEY, 30),
     error: null,
+    resumeItemId: readStoredItemId(),
+    sleepTimerMode: null,
+    sleepTimerSecondsRemaining: null,
+    upNext: null,
 
     async play(item) {
       const current = get()
@@ -271,11 +367,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       // Switching books: report the old position before abandoning the session.
       if (current.session) await sync(true)
 
-      set({ isLoading: true, error: null, item })
+      stopSleepTimer()
+      set({ isLoading: true, error: null, item, sleepTimerMode: null, sleepTimerSecondsRemaining: null, upNext: null })
 
       try {
+        const appName = getAppName()
         const session = await api.post<PlaybackSession>(`/items/${item.id}/play`, {
-          deviceInfo: { clientName: 'VoxSilo', clientVersion: '0.1.0', deviceId: 'voxsilo-web' },
+          deviceInfo: { clientName: appName, clientVersion: '0.1.0', deviceId: `${appName.toLowerCase().replace(/\s+/g, '-')}-web` },
           supportedMimeTypes: ['audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/flac', 'audio/ogg'],
           mediaPlayer: 'html5',
           forceDirectPlay: false,
@@ -300,6 +398,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
         const index = trackForTime(session.currentTime)
         loadTrack(index, session.currentTime - session.audioTracks[index].startOffset, true)
         updateMediaSession(session, item)
+        try {
+          localStorage.setItem(ACTIVE_ITEM_STORAGE_KEY, item.id)
+        } catch {
+          // Private browsing or blocked storage — resume-after-reload just won't work.
+        }
       } catch (error) {
         set({ isLoading: false, error: error instanceof Error ? error.message : 'Could not start playback.' })
       }
@@ -344,6 +447,57 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       set({ volume })
     },
 
+    setJumpBackwardAmount(seconds) {
+      writeStored(JUMP_BACKWARD_STORAGE_KEY, seconds)
+      set({ jumpBackwardAmount: seconds })
+    },
+
+    setJumpForwardAmount(seconds) {
+      writeStored(JUMP_FORWARD_STORAGE_KEY, seconds)
+      set({ jumpForwardAmount: seconds })
+    },
+
+    dismissResume() {
+      try {
+        localStorage.removeItem(ACTIVE_ITEM_STORAGE_KEY)
+      } catch {
+        // Ignore — worst case it prompts again next reload.
+      }
+      set({ resumeItemId: null })
+    },
+
+    setSleepTimerDuration(minutes) {
+      stopSleepTimer()
+      set({ sleepTimerMode: 'duration', sleepTimerSecondsRemaining: Math.round(minutes * 60) })
+      sleepTimerInterval = setInterval(() => {
+        const remaining = (get().sleepTimerSecondsRemaining ?? 0) - 1
+        if (remaining <= 0) {
+          pauseForSleepTimer()
+        } else {
+          set({ sleepTimerSecondsRemaining: remaining })
+        }
+      }, 1000)
+    },
+
+    setSleepTimerEndOfChapter() {
+      stopSleepTimer()
+      const { session, currentTime } = get()
+      const chapter = chapterAt(session?.chapters ?? [], currentTime)
+      // No chapter data (or not currently in one) — nothing to arm against.
+      if (!chapter) return
+      sleepTimerArmedChapterId = chapter.id
+      set({ sleepTimerMode: 'chapter', sleepTimerSecondsRemaining: null })
+    },
+
+    cancelSleepTimer() {
+      stopSleepTimer()
+      set({ sleepTimerMode: null, sleepTimerSecondsRemaining: null })
+    },
+
+    dismissUpNext() {
+      set({ upNext: null })
+    },
+
     jumpToChapter(chapter) {
       get().seek(chapter.start)
     },
@@ -370,10 +524,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       const element = getAudio()
       element.pause()
       stopSyncTimer()
+      stopSleepTimer()
       await sync(true)
       element.removeAttribute('src')
       element.load()
-      set({ session: null, item: null, isPlaying: false, currentTime: 0, duration: 0, error: null })
+      try {
+        localStorage.removeItem(ACTIVE_ITEM_STORAGE_KEY)
+      } catch {
+        // Ignore — see setItem above.
+      }
+      set({ session: null, item: null, isPlaying: false, currentTime: 0, duration: 0, error: null, resumeItemId: null, sleepTimerMode: null, sleepTimerSecondsRemaining: null, upNext: null })
     }
   }
 })
@@ -381,4 +541,18 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 /** Chapter containing a given time, for labelling the player. */
 export function chapterAt(chapters: Chapter[], time: number): Chapter | null {
   return chapters.find((c) => time >= c.start && time < c.end) ?? null
+}
+
+/**
+ * Maps a position on the whole-book timeline to which track contains it —
+ * the core of the track/global-time mapping the module doc describes.
+ * Assumes `tracks` is ordered by `startOffset` ascending, which is how the
+ * server always returns them. Out-of-range times (negative, or past the
+ * last track) clamp to the nearest real track rather than returning -1.
+ */
+export function findTrackIndexForTime(tracks: AudioTrack[], globalTime: number): number {
+  for (let i = tracks.length - 1; i >= 0; i--) {
+    if (globalTime >= tracks[i].startOffset) return i
+  }
+  return 0
 }

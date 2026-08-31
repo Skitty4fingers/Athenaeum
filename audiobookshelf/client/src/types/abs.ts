@@ -29,6 +29,8 @@ export interface BookMetadataMinified {
    * or `collapseseries=1`). Plain listings carry `seriesName` alone.
    */
   series?: BookSeriesRef | BookSeriesRef[]
+  /** Present only on the expanded item response — plain listings carry `authorName` alone. */
+  authors?: { id: string; name: string }[]
   genres: string[]
   publishedYear: string | null
   publishedDate: string | null
@@ -105,6 +107,21 @@ export interface LibraryItemMinified {
   numEpisodesIncomplete?: number
 }
 
+export interface LibrarySettings {
+  coverAspectRatio: number
+  disableWatcher: boolean
+  autoScanCronExpression: string | null
+  skipMatchingMediaWithAsin: boolean
+  skipMatchingMediaWithIsbn: boolean
+  audiobooksOnly: boolean
+  epubsAllowScriptedContent: boolean
+  hideSingleBookSeries: boolean
+  onlyShowLaterBooksInContinueSeries: boolean
+  metadataPrecedence: string[]
+  markAsFinishedPercentComplete: number | null
+  markAsFinishedTimeRemaining: number | null
+}
+
 export interface Library {
   id: string
   name: string
@@ -113,6 +130,9 @@ export interface Library {
   icon: string
   mediaType: MediaType
   provider: string
+  settings: LibrarySettings
+  lastScan: number | null
+  lastScanVersion: string | null
   createdAt: number
   lastUpdate: number
 }
@@ -129,6 +149,13 @@ export interface MediaProgress {
   lastUpdate: number
   startedAt: number
   finishedAt: number | null
+}
+
+export interface AudioBookmark {
+  libraryItemId: string
+  time: number
+  title: string
+  createdAt: number
 }
 
 export interface UserPermissions {
@@ -169,6 +196,8 @@ export interface ServerSettings {
   timeFormat: string
   language: string
   version: string
+  /** Admin-configurable app display name; null/unset falls back to the client's build-time default. */
+  customAppName: string | null
   [key: string]: unknown
 }
 
@@ -189,6 +218,78 @@ export interface ServerStatus {
   language: string
   authMethods: string[]
   authFormData: Record<string, unknown>
+}
+
+/** GET /api/authors/:id?include=items */
+export interface AuthorDetail {
+  id: string
+  asin: string | null
+  name: string
+  description: string | null
+  imagePath: string | null
+  libraryId: string
+  addedAt: number
+  updatedAt: number
+  libraryItems: LibraryItemMinified[]
+}
+
+/**
+ * `server/models/Collection.js`. Shared, library-wide shelves — creating or
+ * modifying membership requires `canUpdate` (admin/root by default), unlike
+ * playlists which are owned per-user with no permission gate.
+ */
+export interface Collection {
+  id: string
+  libraryId: string
+  name: string
+  description: string | null
+  books: LibraryItemMinified[]
+  lastUpdate: number
+  createdAt: number
+}
+
+/**
+ * `server/models/Playlist.js`. Personal — `userId` owns it, and the server
+ * enforces that only the owner can read or modify their own playlist.
+ */
+export interface Playlist {
+  id: string
+  name: string
+  libraryId: string
+  userId: string
+  description: string | null
+  items: { libraryItemId: string; libraryItem: LibraryItemMinified }[]
+  lastUpdate: number
+  createdAt: number
+}
+
+/** One entry in `ListeningStats.recentSessions` — `server/objects/PlaybackSession.js#toOldJSON`. */
+export interface ListeningSessionSummary {
+  id: string
+  libraryItemId: string
+  displayTitle: string
+  displayAuthor: string
+  coverPath: string | null
+  duration: number
+  timeListening: number
+  date: string
+  dayOfWeek: string
+  startedAt: number
+  updatedAt: number
+}
+
+/**
+ * GET /api/me/listening-stats (`server/routers/ApiRouter.js#getUserListeningStatsHelpers`).
+ * `days` and `dayOfWeek` are keyed by `YYYY-MM-DD` and full day names ("Monday", ...) respectively —
+ * both come straight from a `dayjs` format call server-side, not enum values.
+ */
+export interface ListeningStats {
+  totalTime: number
+  items: Record<string, { id: string; timeListening: number; mediaMetadata: { title?: string; authorName?: string } | null }>
+  days: Record<string, number>
+  dayOfWeek: Record<string, number>
+  today: number
+  recentSessions: ListeningSessionSummary[]
 }
 
 /** GET /api/libraries/:id/items */
@@ -249,4 +350,69 @@ export interface LibrarySeries {
   books?: LibraryItemMinified[]
   /** Present when `include=progress`; otherwise derive from the books. */
   totalDuration?: number
+}
+
+/**
+ * `?expanded=1` metadata — a superset of BookMetadataMinified with the
+ * structured author/narrator/series fields the editable form needs, rather
+ * than the flattened `authorName`/`narratorName`/`seriesName` display
+ * strings. See server/models/Book.js `oldMetadataToJSONExpanded`.
+ */
+export interface BookMetadataExpanded {
+  title: string | null
+  subtitle: string | null
+  authors: { id: string; name: string }[]
+  authorName: string
+  authorNameLF: string
+  narrators: string[]
+  narratorName: string
+  series: BookSeriesRef[]
+  seriesName: string
+  genres: string[]
+  publishedYear: string | null
+  publishedDate: string | null
+  publisher: string | null
+  description: string | null
+  descriptionPlain?: string
+  isbn: string | null
+  asin: string | null
+  language: string | null
+  explicit: boolean
+  abridged: boolean
+}
+
+export interface BookMediaExpanded {
+  id: string
+  metadata: BookMetadataExpanded
+  coverPath: string | null
+  tags: string[]
+  numTracks: number
+  numAudioFiles: number
+  numChapters: number
+  duration: number
+  size: number
+  ebookFormat?: string
+}
+
+/** `server/objects/Backup.js#toJSON`. */
+export interface Backup {
+  id: string
+  key: string
+  backupDirPath: string
+  datePretty: string
+  fullPath: string
+  path: string
+  filename: string
+  fileSize: number
+  createdAt: number
+  serverVersion: string
+}
+
+/** `server/managers/LogManager.js` — the `LogObject` typedef. */
+export interface LogEntry {
+  timestamp: string
+  source: string
+  message: string
+  levelName: string
+  level: number
 }

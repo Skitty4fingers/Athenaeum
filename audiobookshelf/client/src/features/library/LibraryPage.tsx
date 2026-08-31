@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
-import { ArrowDownAZ, ArrowUpAZ, Layers, LibraryBig, Search, X } from 'lucide-react'
+import { ArrowDownAZ, ArrowUpAZ, CheckSquare, Layers, LibraryBig, Search, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -8,11 +8,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Spinner } from '@/components/kibo-ui/spinner'
 import { BookCard, BookCardSkeleton } from './BookCard'
 import { SeriesCard } from './SeriesCard'
-import { PAGE_SIZE, SORT_OPTIONS, useLibraries, useLibraryItems, useLibrarySearch, type SortValue } from '@/hooks/use-library'
+import { BatchActionBar } from './BatchActionBar'
+import { UploadDialog } from './UploadDialog'
+import { PAGE_SIZE, SORT_OPTIONS, useFilterData, useLibraries, useLibraryItems, useSearchResultItems, type SortValue } from '@/hooks/use-library'
 import { useAuthStore } from '@/stores/auth'
-import { filterLabel } from '@/lib/filters'
+import { decodeFilter, filterLabel } from '@/lib/filters'
 import { usePlayerStore } from '@/stores/player'
-import type { LibraryItemMinified } from '@/types/abs'
 
 const GRID_CLASS = 'grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7'
 
@@ -30,6 +31,7 @@ export function LibraryPage() {
   const { libraryId: routeLibraryId } = useParams<{ libraryId: string }>()
   const defaultLibraryId = useAuthStore((s) => s.defaultLibraryId)
   const user = useAuthStore((s) => s.user)
+  const isAdmin = user?.type === 'root' || user?.type === 'admin'
   const { data: libraries } = useLibraries()
 
   // The bare /library route has no id; fall back to the user's default, then the first available.
@@ -47,7 +49,18 @@ export function LibraryPage() {
   const playItem = usePlayerStore((s) => s.play)
   const [searchParams, setSearchParams] = useSearchParams()
   const filter = searchParams.get('filter')
-  const activeFilterLabel = filterLabel(filter)
+
+  // The `authors` filter encodes an author *id*, unlike every other group
+  // (genres, narrators, progress) which encode human-readable text — see
+  // server/utils/queries/libraryItemsBookFilters.js. filterLabel() has no
+  // server data to resolve an id from, so the name lookup happens here.
+  // Uses filterdata's full author list, not stats' authorsWithCount — that
+  // one is a server-side top-10-by-book-count list (a real bug, found live:
+  // filtering to an 11th+ author showed a raw UUID as the page heading
+  // instead of their name, since they simply weren't in the top 10).
+  const { data: filterData } = useFilterData(libraryId)
+  const decodedFilter = decodeFilter(filter)
+  const activeFilterLabel = decodedFilter?.group === 'authors' ? (filterData?.authors.find((a) => a.id === decodedFilter.value)?.name ?? 'Author') : filterLabel(filter)
 
   // Collapsing is meaningless while searching (search bypasses the items
   // endpoint) or when already filtered down to one series.
@@ -66,7 +79,24 @@ export function LibraryPage() {
     setQuery('')
     setSort('media.metadata.title')
     setDesc(false)
+    setSelectMode(false)
+    setSelectedIds(new Set())
   }, [libraryId])
+
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  function toggleSelectMode() {
+    setSelectMode((v) => !v)
+    setSelectedIds(new Set())
+  }
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   function clearFilter() {
     const params = new URLSearchParams(searchParams)
@@ -75,7 +105,7 @@ export function LibraryPage() {
   }
 
   const itemsQuery = useLibraryItems({ libraryId, sort, desc, filter, collapseSeries: groupSeries && canGroupSeries })
-  const searchQuery = useLibrarySearch(libraryId, debouncedQuery)
+  const search = useSearchResultItems(libraryId, debouncedQuery)
 
   /** Progress is served with the user record, so index it once per render pass. */
   const progressByItem = useMemo(() => {
@@ -90,13 +120,7 @@ export function LibraryPage() {
 
   const browseItems = useMemo(() => itemsQuery.data?.pages.flatMap((p) => p.results) ?? [], [itemsQuery.data])
 
-  const searchItems = useMemo<LibraryItemMinified[]>(() => {
-    const results = searchQuery.data
-    if (!results) return []
-    return [...(results.book ?? []), ...(results.podcast ?? [])].map((m) => m.libraryItem)
-  }, [searchQuery.data])
-
-  const items = isSearching ? searchItems : browseItems
+  const items = isSearching ? search.items : browseItems
 
   // Infinite scroll: observe a sentinel below the grid.
   const sentinelRef = useRef<HTMLDivElement>(null)
@@ -117,14 +141,14 @@ export function LibraryPage() {
   }, [isSearching, hasNextPage, isFetchingNextPage, fetchNextPage])
 
   const total = itemsQuery.data?.pages[0]?.total ?? 0
-  const isInitialLoading = isSearching ? searchQuery.isPending : itemsQuery.isPending
+  const isInitialLoading = isSearching ? search.isPending : itemsQuery.isPending
   const showEmpty = !isInitialLoading && items.length === 0
 
   const resultLabel = `${items.length} result${items.length === 1 ? '' : 's'} for "${debouncedQuery.trim()}"`
   const totalLabel = `${total.toLocaleString()} item${total === 1 ? '' : 's'}`
 
   return (
-    <div className="mx-auto w-full max-w-[120rem] px-4 py-6 sm:px-6 lg:px-8">
+    <div className={`mx-auto w-full max-w-[120rem] px-4 py-6 sm:px-6 lg:px-8 ${selectMode && selectedIds.size > 0 ? 'pb-20' : ''}`}>
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -170,7 +194,7 @@ export function LibraryPage() {
           <Button
             variant={groupSeries && canGroupSeries ? 'default' : 'outline'}
             size="icon"
-            disabled={!canGroupSeries}
+            disabled={!canGroupSeries || selectMode}
             onClick={toggleGroupSeries}
             aria-pressed={groupSeries && canGroupSeries}
             aria-label="Group books by series"
@@ -178,6 +202,20 @@ export function LibraryPage() {
           >
             <Layers className="size-4" />
           </Button>
+
+          <Button
+            variant={selectMode ? 'default' : 'outline'}
+            size="icon"
+            disabled={groupSeries && canGroupSeries}
+            onClick={toggleSelectMode}
+            aria-pressed={selectMode}
+            aria-label={selectMode ? 'Exit selection mode' : 'Select multiple books'}
+            title={selectMode ? 'Done selecting' : 'Select multiple'}
+          >
+            <CheckSquare className="size-4" />
+          </Button>
+
+          {isAdmin && <UploadDialog />}
         </div>
       </div>
 
@@ -209,7 +247,16 @@ export function LibraryPage() {
             // each series; those render as a stacked series card instead.
             if (item.collapsedSeries) return <SeriesCard key={`series-${item.collapsedSeries.id}`} item={item} />
             const progress = progressByItem.get(item.id)
-            return <BookCard key={item.id} item={item} progress={progress?.progress ?? 0} isFinished={progress?.isFinished ?? false} onPlay={(book) => void playItem(book)} />
+            return (
+              <BookCard
+                key={item.id}
+                item={item}
+                progress={progress?.progress ?? 0}
+                isFinished={progress?.isFinished ?? false}
+                onPlay={selectMode ? undefined : (book) => void playItem(book)}
+                selection={selectMode ? { selected: selectedIds.has(item.id), onToggle: () => toggleSelected(item.id) } : undefined}
+              />
+            )
           })}
         </div>
       )}
@@ -219,6 +266,8 @@ export function LibraryPage() {
           {isFetchingNextPage && <Spinner variant="ring" size={24} className="text-muted-foreground" />}
         </div>
       )}
+
+      {selectMode && <BatchActionBar selectedItems={items.filter((i) => selectedIds.has(i.id))} onClearSelection={() => setSelectedIds(new Set())} />}
     </div>
   )
 }
