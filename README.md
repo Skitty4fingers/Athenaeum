@@ -262,6 +262,8 @@ Use `bg-playing` / `text-playing` for anything that means "this is being listene
 
 ## Known gaps
 
+There is a concrete plan to close all three: [`docs/GAP-CLOSURE-PLAN.md`](docs/GAP-CLOSURE-PLAN.md).
+
 - The vendor chunk (React, Radix, etc.) is one ~745 kB bundle, loaded upfront — a further split was diminishing returns against the work still ahead when this was decided; route-level code is already split per-page.
 - Series ordering depends on converted metadata (see `scripts/libation-to-abs.mjs` in `docs/PLAN.md`); books added without running the converter fall back to whatever the ID3 tags say.
 - Broader Socket.IO live-sync beyond scan status is the main thing still open post-1.0.

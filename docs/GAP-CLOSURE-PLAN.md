@@ -1,0 +1,153 @@
+# Closing the known gaps
+
+Plan for the three items in the README's [Known gaps](../README.md#known-gaps). Ordered by
+effort-to-value: A is a half-day quick win, B is the post-1.0 headline feature, C is the
+deepest and can proceed in independent slices. Effort figures assume one person and are rough,
+matching the conventions in [PLAN.md](PLAN.md).
+
+---
+
+## A. Vendor bundle — stop shipping lazy-route dependencies upfront (~½ day)
+
+**The gap:** one ~745 kB vendor chunk, loaded upfront.
+
+**Root cause, found in code:** `client/vite.config.ts` uses a blanket rule —
+
+```js
+manualChunks(id) {
+  if (id.includes('node_modules')) return 'vendor'
+}
+```
+
+This overrides Rollup's default behavior of assigning a dependency to the chunk that imports
+it. The route-level `React.lazy()` split in `App.tsx` is therefore being partially defeated:
+`@dnd-kit/*` (only imported by `CollectionPage`/`PlaylistPage`), `react-dropzone` and
+`react-medium-image-zoom` (only via Kibo components), and `motion` (only the theme switcher)
+are all pulled into the upfront chunk even though nothing on the initial route needs them.
+So this is less "diminishing returns" than a small config bug — the returns are sitting there.
+
+**Steps:**
+
+1. **Measure before touching anything.** Add `rollup-plugin-visualizer` as a dev dependency,
+   run a build, and record the actual composition of the 745 kB. Keep the treemap output in
+   the PR description so the before/after is honest.
+2. **Replace the blanket rule with one narrow group.** Keep only a `react-core` manual chunk
+   (react, react-dom, react-router-dom, scheduler) so the most stable, most shared code keeps
+   its own long-lived cache entry, and let Rollup place everything else with its importer.
+   Radix/shadcn primitives are used by the always-mounted shell (sidebar, player bar) and will
+   correctly land in the entry chunk on their own.
+3. **Audit the two classic bloat sources** while the visualizer is open: `lucide-react` must
+   be imported per-icon (it is tree-shakeable, but verify no namespace import slipped in), and
+   `date-fns` v4 imports should be per-function.
+4. **Guardrail:** leave `build.chunkSizeWarningLimit` at its default so a regression warns in
+   the build output, and note the measured upfront-JS number in PLAN.md's Current state table.
+
+**Done when:** upfront JS (entry + react-core + CSS) is measurably smaller — the working
+target is under ~450 kB minified, to be confirmed against the visualizer since Radix and
+socket.io-client legitimately belong upfront; lazy routes still load (full e2e pass); and a
+rebuild that touches only app code leaves the `react-core` chunk hash unchanged.
+
+**Risks:** `manualChunks` is the one Rollup feature that can create circular-init crashes when
+it splits too finely — mitigated by grouping only the react core, which has no cross-chunk
+init cycles. Watch for request waterfalls if Rollup produces many tiny shared chunks; coarsen
+with one more manual group only if measured.
+
+---
+
+## B. Broader Socket.IO live-sync (~2 days for both tiers)
+
+**The gap:** the client subscribes to exactly two of the server's ~40 socket events
+(`task_started`/`task_finished` for scan status). Everything else — edits from another
+browser, progress from the phone app, a household member reordering a shared collection —
+waits for a refetch or reload.
+
+**Shape of the fix:** one declarative sync layer, not per-feature hooks. The pattern is
+already proven in `use-scan-status.ts`: socket event → TanStack Query invalidation. Generalize
+it into `src/lib/socket-sync.ts`, installed once at app root — a table mapping event names to
+the query keys they stale. Invalidation is idempotent and cheap at household scale, so the
+layer never needs to *interpret* payloads beyond extracting ids; the server stays the source
+of truth. Server stays untouched — every event below already exists in `SocketAuthority`.
+
+**Tier 1 — items and progress (~1 day):**
+
+| Event | Invalidates |
+| --- | --- |
+| `item_updated`, `items_updated`, `item_removed` | `['library-items']`, the item's own query, `['library-series']`, `['library-filterdata']` |
+| `user_item_progress_updated` (user-scoped) | progress/continue-listening queries — this is what makes "pause on the phone, resume in the browser" reflect without a reload |
+| `library_updated` / `library_added` / `library_removed` | `['libraries']`, library settings |
+
+Guardrail: a scan or batch edit emits `item_updated` in bursts, so coalesce invalidations per
+query key with a short trailing debounce (~300 ms) — one refetch per burst, not one per book.
+
+**Tier 2 — shared surfaces (~1 day):**
+
+- `collection_*` and user-scoped `playlist_*` → collections/playlists lists and detail pages.
+  Complements drag-to-reorder: two people on the same shared collection stop clobbering each
+  other's view.
+- `author_updated/added/removed`, `series_updated/added/removed`, `authors_num_books_updated`
+  → author and series pages.
+- `user_updated` (user-scoped) → refresh the auth store (permissions, settings changed by an
+  admin take effect without re-login).
+- `user_session_closed` / `stream_reset` → surface a toast in the player rather than silently
+  desyncing; decide per-event whether to pause.
+
+**Deliberately not subscribed**, matching the scope cuts in PLAN.md: `episode_*` (podcasts),
+`rss_feed_*`, `metadata_embed_queue_update`, `backup_applied`. `admin_message` is a candidate
+for a simple toast, but optional.
+
+**Done when:** the event→key map has unit tests (it's a pure table), and a two-browser manual
+pass shows: edit metadata in A → B updates; finish a chapter in A → B's progress bar moves;
+reorder a collection in A → B reorders. Update PLAN.md line "the other ~28 events aren't
+subscribed to" accordingly.
+
+---
+
+## C. Series ordering without the converter (~2–3 days, in independent slices)
+
+**The gap:** correct series order depends on `scripts/libation-to-abs.mjs` having produced a
+`metadata.json`; books that arrive any other way (in-app upload, manual copy) fall back to
+ID3 `SERIES`/`PART` tags, which are wrong or missing for parts of a set.
+
+The API-contract constraint (PLAN.md: never touch `/api`, server edits confined to static
+serving) rules out hooking the scanner. So close it from three directions that are all
+client-side or tooling-side:
+
+**C1. Detect — a series-health flag (~½ day).** `SeriesPage` already loads every book with its
+sequence. When any book in the series has a missing or duplicate sequence, show a banner:
+"N books in this series have no order." Zero new data fetching; it just makes the silent
+failure visible where the user is already looking at it.
+
+**C2. Fix in-app — a series order editor (~1–1.5 days).** From that banner, open a
+drag-to-reorder dialog for the series (the dnd-kit pattern is already built for collections
+and playlists) that assigns sequences 1..N and writes them through the existing batch update
+endpoint (`POST /api/items/batch/update`, already used by bulk tag/genre edits, already
+emitting `items_updated` — which Tier 1 of lane B turns into an instant refresh). This is the
+structural fix: it repairs ordering for *any* source of books, not just Libation output, and
+the item editor precedent (series matched by name, verified in PLAN.md) shows the server
+handles the write correctly.
+
+**C3. Prevent — converter and upload ergonomics (~½ day).**
+- Add `--watch` to `libation-to-abs.mjs` (poll `fs.stat` on an interval; the script is
+  dependency-free and should stay that way), so a Libation download folder gets its
+  `metadata.json` written before the next scan picks the book up. Document running it as a
+  service/cron next to the Docker deployment notes.
+- The in-app upload form already collects series; verify whether sequence survives to the
+  scanned item, and if not, have the upload flow PATCH series+sequence onto the item after
+  the scan completes — the client knows exactly what the user typed, and the write path is
+  the same one the item editor already uses.
+
+**Done when:** a book added with no `metadata.json` can be put in correct series order
+entirely from the UI; the health banner appears/disappears correctly (unit-test the
+missing/duplicate-sequence predicate); `--watch` round-trips a new sidecar in a manual test.
+
+---
+
+## Suggested sequencing
+
+1. **A** first — half a day, self-contained, and every later PR ships less JavaScript.
+2. **B Tier 1** next — the sync layer is the biggest daily-use win and C2 lands nicer on top
+   of it (batch sequence writes propagate to other tabs for free).
+3. **C1 → C2**, then **B Tier 2** and **C3** in either order.
+
+Each lane is a separate PR against `main` with its own verification; nothing here touches
+`server/` or the API contract.
