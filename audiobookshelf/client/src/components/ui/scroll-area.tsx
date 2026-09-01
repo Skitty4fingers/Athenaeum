@@ -13,20 +13,28 @@ function ScrollArea({
   return (
     <ScrollAreaPrimitive.Root
       data-slot="scroll-area"
-      className={cn("relative", className)}
+      className={cn("relative flex flex-col overflow-hidden", className)}
       {...props}
     >
       <ScrollAreaPrimitive.Viewport
         data-slot="scroll-area-viewport"
-        // Radix wraps the viewport's children in its own `display: table` div
-        // (for scrollbar-thumb sizing). A table sizes to its content's natural
-        // width rather than the container, so full-width flex/block children
-        // with variable-width text (e.g. a real narrator or genre name) can
-        // blow the table wider than the sidebar — every row then shares that
-        // inflated width and gets clipped by the outer overflow-hidden,
-        // visually truncating unrelated content like "All books 175". Forcing
-        // the wrapper back to block layout is Radix's own documented fix.
-        className="size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 [&>div]:!block"
+        // `size-full` (height: 100%) only resolves against a Root with an
+        // *explicit* height — a Root sized by `max-h-*` (an auto height
+        // clamped by max-height, not a definite height) leaves `height: 100%`
+        // computing as `auto`, so the viewport silently grows to fit all of
+        // its content instead of clipping/scrolling it (found by actually
+        // measuring computed styles, not assumed). `flex-1 min-h-0` sizes
+        // correctly off either a definite or a max-height-clamped flex
+        // container. Radix wraps the viewport's children in its own
+        // `display: table` div (for scrollbar-thumb sizing) — a table sizes
+        // to its content's natural width rather than the container, so
+        // full-width flex/block children with variable-width text (e.g. a
+        // real narrator or genre name) can blow the table wider than the
+        // sidebar — every row then shares that inflated width and gets
+        // clipped by the outer overflow-hidden, visually truncating
+        // unrelated content like "All books 175". Forcing the wrapper back
+        // to block layout is Radix's own documented fix.
+        className="min-h-0 w-full flex-1 rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 [&>div]:!block"
       >
         {children}
       </ScrollAreaPrimitive.Viewport>

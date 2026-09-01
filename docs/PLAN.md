@@ -767,6 +767,31 @@ Phase 4 is now complete. VoxSilo's roadmap through 1.0 is done.
   directly to a formerly-invisible 47th author's filtered page now shows their real name in the
   heading instead of a UUID.
 
+- **2026-09-01 — Chapter list (and every other popover-based scroll list) didn't scroll at all,
+  on desktop or mobile.** Reported with screenshots from both a desktop browser and iOS Safari —
+  the Now Playing screen's "Chapters" popover rendered all 84 chapters as one long unclipped block
+  spilling past the edge of the box (and off the bottom of the screen), with no scrollbar and no
+  response to mouse wheel or touch drag. Root-caused by direct DOM measurement (not guessed): the
+  vendored `ScrollArea` component (`src/components/ui/scroll-area.tsx`) was missing
+  `overflow-hidden` on its Root element — present in the real shadcn/ui source, silently dropped at
+  some point in this fork. Adding just `overflow-hidden` back fixed the *visual* clipping but not
+  scrolling itself: measurement showed the inner Viewport's `clientHeight` still equal to its full
+  `scrollHeight` (2696px for 84 chapters) even once visually clipped, because `size-full` (`height:
+  100%`) on the Viewport only resolves against a Root with an *explicit* height — a Root sized by
+  `max-h-80` (an auto height clamped by max-height, not a definite height, per the CSS spec) leaves
+  `height: 100%` computing as `auto`, so the Viewport just grows to fit all its content instead of
+  being capped and made scrollable. Fixed properly by making Root `flex flex-col` and the Viewport
+  `flex-1 min-h-0` instead of `size-full` — flexbox resolves sizing correctly against a
+  max-height-clamped flex container, unlike plain percentage heights, and this works uniformly
+  whether the Root's height comes from `max-h-*` (the three chapter-list popovers) or from a
+  flex/grid ancestor (the sidebar's own `ScrollArea`, which was already working and stayed working
+  after this change). Verified live: for the popover case, `viewport.clientHeight` went from `2696`
+  (broken — full content, nothing to scroll) to the correct `320` (matching `max-h-80`) with
+  `scrollHeight` still `2696`, a real mouse-wheel scroll over the list moved it without the page
+  behind it moving too, and the same `clientHeight`/`scrollHeight` split held under a mobile
+  viewport emulation. Confirmed no regression in the sidebar's own (already-working) `ScrollArea`
+  usage, and re-ran typecheck, `npm test` (34 passed), and a production build, all clean.
+
 ---
 
 ## Post-1.0
