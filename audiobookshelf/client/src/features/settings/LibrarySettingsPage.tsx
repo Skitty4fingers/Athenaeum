@@ -146,13 +146,12 @@ export function LibrarySettingsPage() {
 
   useEffect(() => {
     if (library && !finishThresholdDirty) setFinishThreshold(String(library.settings.markAsFinishedTimeRemaining ?? 10))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [library])
 
   // Announce scan completion once, right when the result lands.
   useEffect(() => {
     if (lastResult) toast.success(`Scan complete — ${lastResult.text}`)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [lastResult])
 
   const knownSources = useMemo(() => precedence.filter((key) => PRECEDENCE_LABELS[key]), [precedence])

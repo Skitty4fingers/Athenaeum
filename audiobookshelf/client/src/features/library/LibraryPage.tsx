@@ -74,6 +74,9 @@ export function LibraryPage() {
     setSearchParams(params, { replace: true })
   }
 
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+
   // Reset view state when switching libraries so filters do not leak across them.
   useEffect(() => {
     setQuery('')
@@ -83,8 +86,6 @@ export function LibraryPage() {
     setSelectedIds(new Set())
   }, [libraryId])
 
-  const [selectMode, setSelectMode] = useState(false)
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   function toggleSelectMode() {
     setSelectMode((v) => !v)
     setSelectedIds(new Set())
