@@ -65,7 +65,7 @@ with one more manual group only if measured.
 
 ---
 
-## B. Broader Socket.IO live-sync (~2 days for both tiers) — Tier 1 ✅ DONE
+## B. Broader Socket.IO live-sync (~2 days for both tiers) — ✅ DONE
 
 **Tier 1 outcome:** shipped as `src/lib/socket-sync.ts`, installed once from `AppShell`. The
 event → query-key table is a pure function (`keysForEvent`) with 14 unit tests, and three e2e
@@ -83,7 +83,22 @@ Two deviations from the plan below, both found while building:
 - The coalescing window runs from the first pending event rather than resetting per event. A
   resetting debounce starves during a scan's burst and never flushes until the burst ends.
 
-Tier 2 below is still open.
+**Tier 2 outcome:** collections, playlists, authors (including the scanner's batched
+`authors_num_books_updated`) and series added to the same table, plus `user_session_closed`,
+which needed real logic rather than an invalidation. Verified live: a collection created, renamed
+and deleted from another device tracks on an open list; series and author renames reach their open
+pages.
+
+Two decisions worth recording:
+- **`stream_reset` is deliberately not subscribed.** It only concerns HLS transcoding, and this
+  client plays audio files directly — it never opens an HLS stream, so a handler would be
+  unreachable code. Same reasoning as the podcast/RSS events.
+- **`user_session_closed` needs to tell our own close from someone else's.** `close()` POSTs to
+  `/session/:id/close` and the server echoes the event back to the sender, arriving while
+  `close()` is still awaiting its final sync. The player store records ids it is closing and
+  consumes them once; a genuinely remote close pauses playback, drops the dead session, and falls
+  back to the existing "Continue listening?" prompt rather than leaving audio playing against a
+  session that no longer exists and can no longer record position.
 
 ### Original plan
 

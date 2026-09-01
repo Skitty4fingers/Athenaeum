@@ -40,13 +40,24 @@ function auth(token: string) {
   return { Authorization: `Bearer ${token}` }
 }
 
-async function apiLogin() {
-  const api = await request.newContext()
-  const res = await api.post(`${API_ROOT}/login`, { data: { username, password } })
-  if (!res.ok()) throw new Error(`API login failed: ${res.status()}`)
-  const body = await res.json()
-  return { api, token: body.user.accessToken as string, libraryId: body.userDefaultLibraryId as string | null }
+/** One API sign-in for the file — see the note in live-sync.spec.ts on the auth rate limit. */
+let sharedCtx: Promise<{ api: APIRequestContext; token: string; libraryId: string | null }> | null = null
+
+function apiLogin() {
+  sharedCtx ??= (async () => {
+    const api = await request.newContext()
+    const res = await api.post(`${API_ROOT}/login`, { data: { username, password } })
+    if (!res.ok()) throw new Error(`API login failed: ${res.status()}${res.status() === 429 ? ' (auth rate limit — wait or restart the server)' : ''}`)
+    const body = await res.json()
+    return { api, token: body.user.accessToken as string, libraryId: body.userDefaultLibraryId as string | null }
+  })()
+  return sharedCtx
 }
+
+test.afterAll(async () => {
+  if (sharedCtx) await (await sharedCtx).api.dispose().catch(() => {})
+  sharedCtx = null
+})
 
 /** Full series list for a book — only the expanded endpoint carries all of them. */
 async function seriesOf(api: APIRequestContext, token: string, itemId: string): Promise<SeriesRef[]> {
@@ -161,7 +172,6 @@ test.describe('series reading order', () => {
           refs.map((s) => ({ name: s.name, sequence: s.sequence }))
         ).catch(() => {})
       }
-      await api.dispose()
     }
   })
 })

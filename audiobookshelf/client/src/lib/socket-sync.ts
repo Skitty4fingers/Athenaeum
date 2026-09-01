@@ -1,4 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { getSocket } from './socket'
 import { useAuthStore } from '@/stores/auth'
 import { usePlayerStore } from '@/stores/player'
@@ -18,11 +19,15 @@ import type { MediaProgress } from '@/types/abs'
  * Continue Listening and every grid progress bar read) and the user record
  * itself. Those are patched directly from the payload.
  *
- * Scope is Tier 1 of docs/GAP-CLOSURE-PLAN.md lane B: items, libraries, and
- * the current user's progress/account. Podcast (`episode_*`), RSS (`rss_feed_*`)
- * and metadata-embed events are deliberately not subscribed — those features
- * are out of scope for this client (docs/PLAN.md), so listening to them would
- * only cost refetches for surfaces that don't exist.
+ * Scope is docs/GAP-CLOSURE-PLAN.md lane B, Tiers 1 and 2: items, libraries,
+ * the current user's progress/account, collections, playlists, authors, series
+ * and playback sessions.
+ *
+ * Deliberately not subscribed: podcast (`episode_*`), RSS (`rss_feed_*`),
+ * metadata-embed and backup events, because those features are out of scope
+ * for this client (docs/PLAN.md); and `stream_reset`, which only concerns HLS
+ * transcoding — this client plays audio files directly and never opens an HLS
+ * stream, so a handler for it would be unreachable code.
  */
 
 export type QueryKey = readonly unknown[]
@@ -47,7 +52,22 @@ export const SYNCED_EVENTS = [
   'library_removed',
   'task_finished',
   'user_item_progress_updated',
-  'user_updated'
+  'user_updated',
+  // Tier 2 — shared surfaces.
+  'collection_added',
+  'collection_updated',
+  'collection_removed',
+  'playlist_added',
+  'playlist_updated',
+  'playlist_removed',
+  'author_added',
+  'author_updated',
+  'author_removed',
+  'authors_num_books_updated',
+  'series_added',
+  'series_updated',
+  'series_removed',
+  'user_session_closed'
 ] as const
 
 interface ItemLike {
@@ -143,6 +163,52 @@ export function keysForEvent(event: string, payload: unknown): QueryKey[] {
       return [['library-items'], ['items-in-progress'], ...(itemId ? [['item', itemId] as QueryKey] : [])]
     }
 
+    // Collections are library-wide and admin-curated; playlists are per-user.
+    // Both carry the expanded record, so the detail query can be targeted.
+    case 'collection_added':
+    case 'collection_updated':
+    case 'collection_removed': {
+      const id = asString((payload as ItemLike | undefined)?.id)
+      return [['collections'], ...(id ? [['collection', id] as QueryKey] : [])]
+    }
+
+    case 'playlist_added':
+    case 'playlist_updated':
+    case 'playlist_removed': {
+      const id = asString((payload as ItemLike | undefined)?.id)
+      return [['playlists'], ...(id ? [['playlist', id] as QueryKey] : [])]
+    }
+
+    // An author's name or book count changed. `['author', id]` backs the author
+    // page; filterdata backs the sidebar's author list.
+    case 'author_added':
+    case 'author_updated':
+    case 'author_removed': {
+      const id = asString((payload as ItemLike | undefined)?.id)
+      return [['library-filterdata'], ['library-items'], ...(id ? [['author', id] as QueryKey] : [])]
+    }
+
+    // Emitted by the scanner in one batch: `{ libraryId, authors: [...] }`.
+    case 'authors_num_books_updated': {
+      const authors = (payload as { authors?: ItemLike[] } | undefined)?.authors ?? []
+      const keys: QueryKey[] = [['library-filterdata']]
+      for (const author of authors) {
+        const id = asString(author?.id)
+        if (id) keys.push(['author', id])
+      }
+      return keys
+    }
+
+    // Series drive both the sidebar list and the series page's ordering.
+    case 'series_added':
+    case 'series_updated':
+    case 'series_removed':
+      return [['library-series'], ['series-books'], ['library-filterdata']]
+
+    // Handled by the player store — see the handler in `installSocketSync`.
+    case 'user_session_closed':
+      return []
+
     // Handled entirely by patching the auth store — no server query mirrors it.
     case 'user_updated':
       return []
@@ -230,6 +296,17 @@ export function installSocketSync(queryClient: QueryClient): () => void {
 
       if (event === 'user_updated') {
         useAuthStore.getState().applyUserUpdate(payload)
+        return
+      }
+
+      if (event === 'user_session_closed') {
+        // Payload is the bare session id string, not an object.
+        const sessionId = typeof payload === 'string' ? payload : asString((payload as { id?: unknown } | undefined)?.id)
+        if (!sessionId) return
+        // Returns false for this tab's own close, which needs no announcement.
+        if (usePlayerStore.getState().handleSessionClosedRemotely(sessionId)) {
+          toast.info('Playback stopped', { description: 'This listening session was closed somewhere else.' })
+        }
         return
       }
 

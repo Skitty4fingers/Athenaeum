@@ -28,17 +28,35 @@ interface Ctx {
   libraryId: string
 }
 
-async function signInApi(username: string, password: string): Promise<Ctx> {
-  const api = await request.newContext()
-  const res = await api.post(`${API_ROOT}/login`, { data: { username, password } })
-  if (!res.ok()) throw new Error(`API login failed: ${res.status()}`)
-  const body = await res.json()
-  const token = body.user.accessToken as string
+/**
+ * One API sign-in for the whole file, not one per test.
+ *
+ * The server rate-limits auth (40 attempts per 10 minutes by default). Each
+ * test already signs the browser in through the UI, so a second login per test
+ * for the "other device" context put a five-test run at ten attempts and made
+ * back-to-back runs fail with 429s that look like product bugs.
+ */
+let sharedCtx: Promise<Ctx> | null = null
 
-  const libs = await api.get(`${API_ROOT}/api/libraries`, { headers: { Authorization: `Bearer ${token}` } })
-  const libraryId = (body.userDefaultLibraryId as string | null) ?? (await libs.json()).libraries[0].id
-  return { api, token, libraryId }
+function signInApi(username: string, password: string): Promise<Ctx> {
+  sharedCtx ??= (async () => {
+    const api = await request.newContext()
+    const res = await api.post(`${API_ROOT}/login`, { data: { username, password } })
+    if (!res.ok()) throw new Error(`API login failed: ${res.status()}${res.status() === 429 ? ' (auth rate limit — wait or restart the server)' : ''}`)
+    const body = await res.json()
+    const token = body.user.accessToken as string
+
+    const libs = await api.get(`${API_ROOT}/api/libraries`, { headers: { Authorization: `Bearer ${token}` } })
+    const libraryId = (body.userDefaultLibraryId as string | null) ?? (await libs.json()).libraries[0].id
+    return { api, token, libraryId }
+  })()
+  return sharedCtx
 }
+
+test.afterAll(async () => {
+  if (sharedCtx) await (await sharedCtx).api.dispose().catch(() => {})
+  sharedCtx = null
+})
 
 function auth(token: string) {
   return { Authorization: `Bearer ${token}` }
@@ -87,7 +105,6 @@ test.describe('live sync', () => {
       await api.patch(`${API_ROOT}/api/items/${target.id}/media`, { headers: auth(token), data: { metadata: { title: originalTitle } } })
     }
     await expect(page.getByText(originalTitle, { exact: true }).first()).toBeVisible({ timeout: 15_000 })
-    await api.dispose()
   })
 
   test('progress from another device reaches an open item page', async ({ page }) => {
@@ -120,8 +137,7 @@ test.describe('live sync', () => {
       const me = await (await api.get(`${API_ROOT}/api/me`, { headers: auth(token) })).json()
       const mp = me.mediaProgress?.find((p: { libraryItemId: string; id: string }) => p.libraryItemId === target.id)
       if (mp) await api.delete(`${API_ROOT}/api/me/progress/${mp.id}`, { headers: auth(token) }).catch(() => {})
-      await api.dispose()
-    }
+      }
   })
 
   test('this tab’s own playback heartbeats do not refetch the library grid', async ({ page }) => {
@@ -160,6 +176,67 @@ test.describe('live sync', () => {
     expect(refetches, 'own playback heartbeats should not refetch the library grid').toBe(0)
 
     await page.getByRole('button', { name: 'Close player' }).click().catch(() => {})
-    await api.dispose()
+  })
+
+  test('a collection created, renamed and deleted elsewhere tracks on an open list', async ({ page }) => {
+    const { api, token, libraryId: defaultLibrary } = await signInApi(username!, password!)
+    const libs = await (await api.get(`${API_ROOT}/api/libraries`, { headers: auth(token) })).json()
+    const libraryId = defaultLibrary ?? libs.libraries[0].id
+    const items = await (await api.get(`${API_ROOT}/api/libraries/${libraryId}/items?limit=1&minified=1`, { headers: auth(token) })).json()
+    const seed = items.results?.[0]
+    test.skip(!seed, 'The library under test has no items.')
+
+    const name = `E2E Collection ${Date.now() % 100000}`
+    const renamed = `${name} renamed`
+    let collectionId: string | null = null
+
+    await signInBrowser(page, username!, password!)
+    await page.goto('collections')
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible({ timeout: 15_000 })
+
+    try {
+      // A collection cannot be created empty server-side, so seed it with one book.
+      const created = await (await api.post(`${API_ROOT}/api/collections`, { headers: auth(token), data: { libraryId, name, books: [seed.id] } })).json()
+      collectionId = created.id
+      await expect(page.getByText(name)).toBeVisible({ timeout: 15_000 })
+
+      await api.patch(`${API_ROOT}/api/collections/${collectionId}`, { headers: auth(token), data: { name: renamed } })
+      await expect(page.getByText(renamed)).toBeVisible({ timeout: 15_000 })
+
+      await api.delete(`${API_ROOT}/api/collections/${collectionId}`, { headers: auth(token) })
+      collectionId = null
+      // Must wait for it to *go*: asserting absence immediately would pass on
+      // the pre-refetch render and prove nothing.
+      await expect(page.getByText(renamed)).toBeHidden({ timeout: 15_000 })
+    } finally {
+      if (collectionId) await api.delete(`${API_ROOT}/api/collections/${collectionId}`, { headers: auth(token) }).catch(() => {})
+      }
+  })
+
+  test('a session closed on another device stops playback here and offers to resume', async ({ page }) => {
+    test.setTimeout(90_000)
+    const { api, token } = await signInApi(username!, password!)
+
+    await signInBrowser(page, username!, password!)
+    const firstBook = page.locator('article a[href*="/item/"]').first()
+    await expect(firstBook).toBeVisible({ timeout: 15_000 })
+    await firstBook.click()
+    await expect(page).toHaveURL(/\/item\//)
+    await page.getByRole('button', { name: /^(Play|Resume)$/ }).click()
+    await expect(page.getByRole('button', { name: 'Pause' }).last()).toBeVisible({ timeout: 20_000 })
+
+    // Close this listening session from outside the browser, the way another
+    // device or an admin would.
+    const online = await (await api.get(`${API_ROOT}/api/users/online`, { headers: auth(token) })).json()
+    const sessionId = online.usersOnline?.[0]?.session?.id
+    expect(sessionId, 'no open playback session found to close').toBeTruthy()
+    await api.post(`${API_ROOT}/api/session/${sessionId}/close`, { headers: auth(token), data: {} })
+
+    // The session is dead server-side, so the player must stop rather than keep
+    // playing against it — and degrade to the same prompt a reload produces.
+    await expect(page.getByText('Playback stopped')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByText('Continue listening?')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByRole('button', { name: 'Pause' })).toHaveCount(0)
+
   })
 })

@@ -126,7 +126,7 @@ for adding a library, scanning, editing an item, or managing users.
   data deletes a book's other series memberships — confirmed by doing it against a real server and
   watching a second series vanish. `e2e/series-order.spec.ts` locks that property down.
 
-- [x] **Live sync, Tier 1** — done
+- [x] **Live sync, Tiers 1 and 2** — done
   `src/lib/socket-sync.ts` — a declarative event → query-key table (`keysForEvent`, pure and
   unit-tested) installed once from `AppShell`, covering item add/update/remove (single and batch),
   library add/update/remove, `task_finished`, `user_item_progress_updated` and `user_updated`.
@@ -137,9 +137,14 @@ for adding a library, scanning, editing an item, or managing users.
   itself. Progress events from this tab's *own* playback session skip invalidation — the player
   syncs every 15s and the server echoes it back, so without that guard the grid refetched twice a
   minute during playback (measured: 2 refetches per 40s with the guard removed, 0 with it).
-  `episode_*`, `rss_feed_*`, `metadata_embed_queue_update` and `backup_applied` stay unsubscribed —
-  those features are out of scope, so listening would only cost refetches for surfaces that don't
-  exist. Tier 2 (collections/playlists, authors/series, session/stream toasts) is still open.
+  Tier 2 adds collections, playlists, authors (including the scanner's batched
+  `authors_num_books_updated`) and series, plus `user_session_closed` — which needs real logic, not
+  an invalidation: the server echoes our own close back to us mid-`close()`, so the player store
+  records ids it is closing and consumes them once, and a genuinely remote close pauses, drops the
+  dead session and falls back to the "Continue listening?" prompt.
+  `episode_*`, `rss_feed_*`, `metadata_embed_queue_update`, `backup_applied` and `stream_reset`
+  stay unsubscribed — those features are out of scope (the last is HLS-only and this client never
+  opens an HLS stream), so listening would only cost refetches for surfaces that don't exist.
 
 - [x] **Library settings and scanning** — done
   `/settings`, admin-gated, linked from the account menu. Folders (add/remove, with a destructive-

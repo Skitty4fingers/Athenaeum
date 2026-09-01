@@ -114,15 +114,84 @@ describe('keysForEvent', () => {
     })
   })
 
+  describe('collections and playlists', () => {
+    it('stales the list and the affected collection', () => {
+      for (const event of ['collection_added', 'collection_updated', 'collection_removed']) {
+        expect(has(event, { id: 'col_1' }, ['collections'])).toBe(true)
+        expect(has(event, { id: 'col_1' }, ['collection', 'col_1'])).toBe(true)
+      }
+    })
+
+    it('stales the list and the affected playlist', () => {
+      for (const event of ['playlist_added', 'playlist_updated', 'playlist_removed']) {
+        expect(has(event, { id: 'pl_1' }, ['playlists'])).toBe(true)
+        expect(has(event, { id: 'pl_1' }, ['playlist', 'pl_1'])).toBe(true)
+      }
+    })
+
+    it('still stales the list when the payload carries no id', () => {
+      expect(has('collection_updated', {}, ['collections'])).toBe(true)
+      expect([...keySet('collection_updated', {})].some((k) => k.startsWith('["collection"'))).toBe(false)
+    })
+  })
+
+  describe('authors', () => {
+    it('stales the author page and the sidebar author list', () => {
+      for (const event of ['author_added', 'author_updated', 'author_removed']) {
+        expect(has(event, { id: 'au_1' }, ['author', 'au_1'])).toBe(true)
+        expect(has(event, { id: 'au_1' }, ['library-filterdata'])).toBe(true)
+      }
+    })
+
+    it('handles the scanner’s batched book-count payload', () => {
+      // `{ libraryId, authors: [{ id, numBooks }] }` — see BookScanner#emitAuthorsNumBooksUpdated.
+      const payload = { libraryId: 'lib_1', authors: [{ id: 'au_1', numBooks: 3 }, { id: 'au_2', numBooks: 5 }] }
+      expect(has('authors_num_books_updated', payload, ['author', 'au_1'])).toBe(true)
+      expect(has('authors_num_books_updated', payload, ['author', 'au_2'])).toBe(true)
+      expect(has('authors_num_books_updated', payload, ['library-filterdata'])).toBe(true)
+    })
+
+    it('survives a batched payload with no authors', () => {
+      expect(() => keysForEvent('authors_num_books_updated', { libraryId: 'lib_1' })).not.toThrow()
+      expect(has('authors_num_books_updated', { libraryId: 'lib_1' }, ['library-filterdata'])).toBe(true)
+    })
+  })
+
+  describe('series', () => {
+    it('stales the series list and any open series page', () => {
+      for (const event of ['series_added', 'series_updated', 'series_removed']) {
+        expect(has(event, { id: 'se_1', libraryId: 'lib_1' }, ['library-series'])).toBe(true)
+        expect(has(event, { id: 'se_1', libraryId: 'lib_1' }, ['series-books'])).toBe(true)
+      }
+    })
+  })
+
+  it('maps user_session_closed to no queries — the player store handles it', () => {
+    // Payload is the bare session id string, not an object.
+    expect(keysForEvent('user_session_closed', 'sess_1')).toEqual([])
+  })
+
+  it('does not subscribe to HLS stream_reset — this client never opens an HLS stream', () => {
+    expect(SYNCED_EVENTS).not.toContain('stream_reset')
+    expect(keysForEvent('stream_reset', { streamId: 's1', startTime: 12 })).toEqual([])
+  })
+
   it('maps user_updated to no queries — it is a store-only patch', () => {
     expect(keysForEvent('user_updated', { id: 'u_1' })).toEqual([])
   })
 
   it('returns at least one key for every subscribed event that is not store-only', () => {
-    const storeOnly = new Set(['user_updated'])
+    const storeOnly = new Set(['user_updated', 'user_session_closed'])
     for (const event of SYNCED_EVENTS) {
       if (storeOnly.has(event)) continue
-      const payload = event === 'task_finished' ? { data: { libraryId: 'lib_1' } } : event === 'user_item_progress_updated' ? { data: { libraryItemId: 'li_1' } } : { id: 'x', libraryId: 'lib_1' }
+      const payload =
+        event === 'task_finished'
+          ? { data: { libraryId: 'lib_1' } }
+          : event === 'user_item_progress_updated'
+            ? { data: { libraryItemId: 'li_1' } }
+            : event === 'authors_num_books_updated'
+              ? { libraryId: 'lib_1', authors: [{ id: 'au_1', numBooks: 2 }] }
+              : { id: 'x', libraryId: 'lib_1' }
       expect(keysForEvent(event, payload).length, `${event} produced no keys`).toBeGreaterThan(0)
     }
   })
