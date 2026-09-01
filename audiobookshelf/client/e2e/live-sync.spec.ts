@@ -163,7 +163,15 @@ test.describe('live sync', () => {
 
     let refetches = 0
     page.on('request', (r) => {
-      if (/\/api\/libraries\/[^/]+\/items/.test(r.url())) refetches++
+      const url = r.url()
+      if (!/\/api\/libraries\/[^/]+\/items/.test(url)) return
+      // The player hits the same endpoint with `filter=series.<id>&sort=sequence`
+      // to find the next book when one finishes ("Up next"). That is playback
+      // behaviour, not a grid refetch, and it fires here whenever the book runs
+      // out during the measurement window — count only the unfiltered grid query
+      // this test actually left mounted.
+      if (/[?&]filter=/.test(url)) return
+      refetches++
     })
 
     await page.waitForTimeout(40_000)

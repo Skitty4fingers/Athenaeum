@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { withSequenceForSeries } from '@/lib/series'
 import type { BookSeriesRef } from '@/types/abs'
 
 /**
@@ -67,10 +68,7 @@ export function useReorderSeries(seriesId: string | undefined) {
             id,
             mediaPayload: {
               metadata: {
-                series: allSeries.map((s) => ({
-                  name: s.name,
-                  sequence: s.id === seriesId ? sequence : s.sequence
-                }))
+                series: withSequenceForSeries(allSeries, (s) => s.id === seriesId, sequence)
               }
             }
           }

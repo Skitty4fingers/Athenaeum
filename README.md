@@ -203,7 +203,11 @@ Unit tests (Vitest) over pure logic — filter encoding, duration/clock/byte for
 cd audiobookshelf/client && E2E_USERNAME=... E2E_PASSWORD=... npm run test:e2e
 ```
 
-One Playwright pass over sign-in → browse → play, against a real running server and real library (both processes from [Quick start](#quick-start) need to already be up). Point it elsewhere with `E2E_BASE_URL`. Use a disposable account, not your own — it starts playing whatever the first book in the grid is.
+Playwright tests over sign-in → browse → play, live sync, and series reordering, against a real running server and real library (both processes from [Quick start](#quick-start) need to already be up). Point it elsewhere with `E2E_BASE_URL`, and set `E2E_CHROMIUM_PATH` if the environment ships its own Chromium.
+
+Use a disposable account and library, not your own — these start playback, rewrite one book's title and series sequences, and create a collection, restoring what they changed afterwards.
+
+Every spec signs in for real and the server rate-limits authentication (40 attempts per 10 minutes), so repeated full-suite runs start failing with "Too many authentication requests". Start the dev server with `RATE_LIMIT_AUTH_MAX=0` while iterating on them.
 
 ## How it works
 
@@ -265,7 +269,7 @@ Use `bg-playing` / `text-playing` for anything that means "this is being listene
 There is a concrete plan to close all three: [`docs/GAP-CLOSURE-PLAN.md`](docs/GAP-CLOSURE-PLAN.md).
 
 - ~~The vendor chunk (React, Radix, etc.) is one ~745 kB bundle, loaded upfront~~ **Closed.** Upfront JS is now ~187 kB gzipped (entry + a cache-stable `react-core` chunk), down ~27% — the blanket vendor rule was pulling lazy-route dependencies into the initial payload, and framer-motion (the app's heaviest dependency) served one three-button animation now done in CSS. `ANALYZE=1 npm run build` writes a treemap to `dist/stats.html`.
-- Series ordering can now be inspected and repaired in the app: a series page flags missing or duplicate positions and offers a drag-to-reorder editor, so books added without running the converter are fixable without touching metadata files. Automatic prevention at import time (converter watch mode, upload sequence round-trip) is still open.
+- ~~Series ordering depends on converted metadata~~ **Closed.** A series page flags missing or duplicate positions and offers a drag-to-reorder editor; the upload form takes a series position and writes it once the scan lands; and `libation-to-abs.mjs --watch` converts sidecars as Libation writes them, so ordering is right before the first scan rather than after it.
 - ~~Broader Socket.IO live-sync beyond scan status~~ **Closed.** Live sync covers items, libraries, scans, progress, collections, playlists, authors, series and playback sessions — edit metadata or listen on another device and an open browser updates without a reload.
 
 ## License

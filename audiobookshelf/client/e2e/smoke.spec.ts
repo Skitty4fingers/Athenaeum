@@ -9,6 +9,11 @@ import { test, expect } from '@playwright/test'
  * Needs E2E_USERNAME / E2E_PASSWORD for an account on whatever server
  * E2E_BASE_URL (see playwright.config.ts) points at — skips itself with a
  * clear reason if they're not set, rather than failing on missing secrets.
+ *
+ * Each spec signs in for real, and the server rate-limits authentication (40
+ * attempts per 10 minutes by default), so repeated full-suite runs will start
+ * failing with "Too many authentication requests". Start the dev server with
+ * RATE_LIMIT_AUTH_MAX=0 when iterating on these tests.
  */
 test('sign in, browse the library, and start playback', async ({ page }) => {
   const username = process.env.E2E_USERNAME
@@ -20,7 +25,11 @@ test('sign in, browse the library, and start playback', async ({ page }) => {
   await page.getByLabel('Password', { exact: true }).fill(password!)
   await page.getByRole('button', { name: 'Sign in' }).click()
 
-  // Lands on the library grid once authenticated.
+  // Assert we actually left the sign-in screen before looking for books. That
+  // screen renders the app name as its own `h1`, so a heading check alone
+  // passes even when sign-in was rejected (a rate limit, say) and the real
+  // failure then shows up as a confusing "no book links found".
+  await expect(page, 'sign-in did not complete — check credentials and the server auth rate limit').not.toHaveURL(/\/signin/, { timeout: 20_000 })
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible({ timeout: 15_000 })
   const firstBook = page.locator('article a[href^="/audiobookshelf/item/"]').first()
   await expect(firstBook).toBeVisible()

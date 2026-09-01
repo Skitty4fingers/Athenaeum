@@ -11,6 +11,13 @@ export default defineConfig({
   testDir: './e2e',
   timeout: 30_000,
   fullyParallel: false,
+  // One worker, not just serial-within-file: every spec drives the *same*
+  // server and the same account, and the server broadcasts socket events to
+  // all of that user's clients. A spec mutating items in a parallel worker
+  // invalidates the grid in another spec's browser — which is exactly what the
+  // "own heartbeats cause no refetch" assertion counts. Parallelism here
+  // produces failures that belong to the harness, not the product.
+  workers: 1,
   retries: 0,
   reporter: 'list',
   use: {

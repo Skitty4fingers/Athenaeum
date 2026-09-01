@@ -148,7 +148,7 @@ subscribed to" accordingly.
 
 ---
 
-## C. Series ordering without the converter (~2–3 days, in independent slices) — C1 + C2 ✅ DONE
+## C. Series ordering without the converter (~2–3 days, in independent slices) — ✅ DONE
 
 **C1 + C2 outcome:** `src/lib/series.ts` analyses a series' sequences (pure, 15 unit tests) and
 `SeriesPage` shows a banner naming the actual problem — "1 of 2 books has no position", "positions
@@ -170,7 +170,23 @@ sequence. `e2e/series-order.spec.ts` asserts that property directly, so a future
 Single-book series are never flagged — one book cannot be out of order with itself, and flagging
 them would put a warning on every standalone the scanner filed under a series name.
 
-**C3 (converter `--watch`, upload sequence round-trip) is still open.**
+**C3 outcome:** `libation-to-abs.mjs --watch [--interval=<s>]` keeps converting as Libation
+writes new books, so a sidecar becomes a `metadata.json` *before* the scanner reaches the book —
+converting after the fact means the first scan already recorded whatever the ID3 tags said.
+Polling rather than `fs.watch`, which is unreliable across platforms and network shares (the
+common setup for a Libation folder on a NAS); still dependency-free. A pass that throws is logged
+and the watch continues, and `--force` is refused with `--watch` because it would rewrite every
+book on a timer.
+
+The upload half turned out to be a real gap, confirmed against a running server: `POST /upload`
+uses `series` only as a folder-path component and stores no position, so an uploaded book landed
+in its series with `sequence: null` and sorted arbitrarily. The upload dialog now takes an
+optional position, and the hook waits for the watcher's scan, finds the item and PATCHes the
+sequence on. If the scan outruns the wait the upload still stands and the toast says the position
+was not set, pointing at the series editor — rather than silently dropping the number.
+
+Both write paths that touch a sequence now share `withSequenceForSeries`, so the
+replace-the-list-wholesale hazard lives in one unit-tested place.
 
 ### Original plan
 

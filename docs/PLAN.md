@@ -117,6 +117,15 @@ for adding a library, scanning, editing an item, or managing users.
   socket.io-client treat `/audiobookshelf` as a namespace and silently never open a real connection.
   `path` is where the base path actually belongs.
 
+- [x] **Series order: prevent it going wrong at import** — done
+  `scripts/libation-to-abs.mjs --watch [--interval=<s>]` converts sidecars as Libation writes them
+  (polling, not `fs.watch`, which is unreliable on network shares; still dependency-free; a failed
+  pass is logged and the watch continues; `--force` is refused with `--watch`). And the in-app
+  upload: `POST /upload` uses `series` only as a folder name and stores no position, so uploaded
+  books landed with `sequence: null` — verified against a running server. The dialog now takes an
+  optional position and the hook waits for the scan, finds the item and PATCHes it on, saying so
+  plainly if the scan outran the wait.
+
 - [x] **Series order: detect and repair in-app** — done
   `src/lib/series.ts` (pure, unit-tested) flags missing or duplicated sequences; `SeriesPage`
   states the problem and offers `SeriesOrderDialog`, a drag-to-reorder editor writing 1..N through

@@ -86,3 +86,30 @@ export function describeSeriesOrder(health: SeriesOrderHealth): string | null {
   const sentence = parts.join(', and ')
   return sentence.charAt(0).toUpperCase() + sentence.slice(1) + '.'
 }
+
+
+/** Minimal shape of a series membership, as the API returns it. */
+export interface SeriesMembership {
+  id?: string
+  name: string
+  sequence: string | null
+}
+
+/**
+ * Sets one series' sequence while preserving every other membership.
+ *
+ * The server matches series by *name* and replaces a book's series list
+ * wholesale (`updateSeriesFromRequest`), so any write has to send the complete
+ * list — dropping an entry deletes that membership. Both write paths that
+ * touch a sequence (the series order editor and the upload flow) go through
+ * here so that hazard lives in one tested place.
+ *
+ * `matches` identifies the series to change: by id where the caller has one,
+ * by name where the series may have just been created by a scan.
+ */
+export function withSequenceForSeries(existing: readonly SeriesMembership[], matches: (series: SeriesMembership) => boolean, sequence: string): { name: string; sequence: string | null }[] {
+  return existing.map((series) => ({
+    name: series.name,
+    sequence: matches(series) ? sequence : series.sequence
+  }))
+}

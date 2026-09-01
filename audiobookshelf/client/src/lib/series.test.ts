@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { analyzeSeriesOrder, describeSeriesOrder } from './series'
+import { analyzeSeriesOrder, describeSeriesOrder, withSequenceForSeries } from './series'
 
 describe('analyzeSeriesOrder', () => {
   it('reports a fully sequenced series as ordered', () => {
@@ -84,5 +84,56 @@ describe('describeSeriesOrder', () => {
 
   it('combines both problems into one sentence', () => {
     expect(describeSeriesOrder(analyzeSeriesOrder(['1', '1', null]))).toBe('1 of 3 books has no position, and position #1 is used more than once.')
+  })
+})
+
+describe('withSequenceForSeries', () => {
+  const memberships = [
+    { id: 'a', name: 'Main Saga', sequence: '2' },
+    { id: 'b', name: 'Side Stories', sequence: '3' }
+  ]
+
+  it('changes only the matched series', () => {
+    expect(withSequenceForSeries(memberships, (s) => s.id === 'a', '1')).toEqual([
+      { name: 'Main Saga', sequence: '1' },
+      { name: 'Side Stories', sequence: '3' }
+    ])
+  })
+
+  it('keeps every other membership — dropping one would delete it server-side', () => {
+    // updateSeriesFromRequest replaces the list wholesale, so an omitted entry
+    // is a removed series. This is the property the whole helper exists for.
+    const result = withSequenceForSeries(memberships, (s) => s.id === 'a', '1')
+    expect(result.map((s) => s.name)).toEqual(['Main Saga', 'Side Stories'])
+  })
+
+  it('can match by name, for a series the caller has no id for', () => {
+    const result = withSequenceForSeries(memberships, (s) => s.name.toLowerCase() === 'side stories', '9')
+    expect(result).toEqual([
+      { name: 'Main Saga', sequence: '2' },
+      { name: 'Side Stories', sequence: '9' }
+    ])
+  })
+
+  it('preserves a null sequence on series it does not touch', () => {
+    const withNull = [
+      { id: 'a', name: 'One', sequence: null },
+      { id: 'b', name: 'Two', sequence: null }
+    ]
+    expect(withSequenceForSeries(withNull, (s) => s.id === 'b', '5')).toEqual([
+      { name: 'One', sequence: null },
+      { name: 'Two', sequence: '5' }
+    ])
+  })
+
+  it('is a no-op when nothing matches', () => {
+    expect(withSequenceForSeries(memberships, () => false, '7')).toEqual([
+      { name: 'Main Saga', sequence: '2' },
+      { name: 'Side Stories', sequence: '3' }
+    ])
+  })
+
+  it('handles an empty list', () => {
+    expect(withSequenceForSeries([], () => true, '1')).toEqual([])
   })
 })
