@@ -6,6 +6,10 @@
 /dev.js
 /dev-config/
 /dev-metadata/
+# Personal local Docker deployment (see README) — its own config/metadata
+# volumes, and a compose file hardcoding this machine's library path.
+/docker-data/
+/docker-compose.local.yml
 **/node_modules/
 /config/
 /audiobooks/

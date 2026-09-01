@@ -716,6 +716,33 @@ Phase 4 is now complete. VoxSilo's roadmap through 1.0 is done.
   header is literally the current library's name — putting a global setting there would've been the
   same category error in the other direction.
 
+- **2026-09-01 — README rewrite with real screenshots, GitHub repo renamed VoxSilo → Athenaeum, Docker
+  deployment verified.** Three separate user requests handled in sequence.
+  README: fully rewritten rather than incrementally edited — hero + gallery screenshots (7 PNGs under
+  `docs/screenshots/`, captured live against the real 175-book library via a throwaway Playwright
+  script rather than the Claude Browser MCP, since the deliverable needed actual image files on disk,
+  not just something viewable in a pane), a table of contents, a condensed Features list (moved the
+  ~25-bullet exhaustive status list's detail to stay in this file, only highlights in the README), and
+  every "VoxSilo" reference updated to "Athenaeum". Kept, rather than cut for brevity, the existing
+  technical depth (playback mechanics, metadata pipeline, design tokens) — a "polished" rewrite isn't
+  the same as a shorter one. `client/.env`'s committed default `VITE_APP_NAME` changed from `VoxSilo`
+  to `Athenaeum` so a fresh clone's build-time default matches what the README now describes; did not
+  do a sweeping rename of "VoxSilo" through code comments and `PLAN.md` history, since those describe
+  what was true when written and a blanket find-replace would falsify the historical record.
+  GitHub: renamed `Skitty4fingers/VoxSilo` → `Skitty4fingers/Athenaeum` via `gh repo rename` (confirmed
+  authenticated first), then updated the local `origin` remote URL to match and verified with a fetch.
+  Docker: built the fork's own image from `audiobookshelf/Dockerfile` (upstream's, unmodified — it
+  already builds this fork's client via `npm run generate`, so it needed no changes) and stood up a
+  real, persistent local deployment via a new `docker-compose.local.yml` (gitignored — it hardcodes
+  this machine's real Libation library path, `docker-data/config`+`docker-data/metadata` volumes
+  separate from the dev SQLite DB under `dev-config`/`dev-metadata`, port `13378:80`). Initialized the
+  root user (`admin`/`admin`, consistent with the credential reset earlier), created a library over
+  both mounted folders, and triggered a scan via direct API calls (`curl` with a bearer token) rather
+  than the browser, then verified live in the browser: signed in, saw all 175 items and 57 authors —
+  an exact match to the dev-server library — confirming the container is a faithful, working parallel
+  deployment path, not just a build that happens to succeed. Documented the build/run commands and
+  what was verified in a new README "Docker" subsection under Building.
+
 ## Post-1.0 bug fixes
 
 - **2026-08-31 — Sidebar was silently truncating Series, Genres, Authors, and Narrators to 20

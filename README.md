@@ -144,6 +144,25 @@ cd audiobookshelf/client && npm run build
 
 Output goes to `client/dist`, which is exactly where the Express server expects it (`server/Server.js`). `npm run generate` is aliased to the same thing so the upstream root script (`npm run client`) and the Dockerfile keep working unchanged.
 
+### Docker
+
+`audiobookshelf/Dockerfile` is upstream's, unmodified — it builds this fork's own client (`npm run generate`) and server into one image, so it works without changes. `docker-compose.yml` at the same level is upstream's example and still points at the public `ghcr.io/advplyr/audiobookshelf` image; to run *this* fork instead, build locally:
+
+```bash
+cd audiobookshelf && docker build -t athenaeum:local .
+```
+
+```bash
+docker run -d --name athenaeum -p 13378:80 \
+  -v ./docker-data/config:/config \
+  -v ./docker-data/metadata:/metadata \
+  -v /path/to/your/audiobooks:/audiobooks \
+  --restart unless-stopped \
+  athenaeum:local
+```
+
+Verified against a real 175-book library: build, root-user init, library creation, and a full scan all complete cleanly against the containerized instance, matching the dev-server library exactly. `/config` and `/metadata` are separate from `dev-config`/`dev-metadata` used by `npm run dev` — the two don't share a database. A `docker-compose.local.yml` following this shape (with real host paths for your library) is a reasonable way to keep the settings around; it's gitignored since it'll hardcode paths specific to your machine.
+
 ## Testing
 
 ```bash
