@@ -1,7 +1,8 @@
 import path from 'node:path'
-import { defineConfig, loadEnv } from 'vite'
+import { defineConfig, loadEnv, type PluginOption } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { visualizer } from 'rollup-plugin-visualizer'
 
 /**
  * The audiobookshelf server mounts every route under a configurable base path
@@ -20,7 +21,13 @@ export default defineConfig(({ mode }) => {
 
   return {
     base,
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      react(),
+      tailwindcss(),
+      // `ANALYZE=1 npm run build` writes dist/stats.html — a treemap of what
+      // is actually inside each chunk. Use it before arguing about bundle size.
+      env.ANALYZE ? (visualizer({ filename: 'dist/stats.html', gzipSize: true }) as PluginOption) : null
+    ],
     resolve: {
       alias: { '@': path.resolve(__dirname, './src') }
     },
@@ -40,11 +47,20 @@ export default defineConfig(({ mode }) => {
       sourcemap: mode !== 'production',
       rollupOptions: {
         output: {
-          // Third-party code changes far less often than app code, so it goes
-          // in its own chunk — the browser caches it across VoxSilo releases.
-          // Route-level React.lazy() in App.tsx handles the rest of the split.
+          // Only the react runtime is grouped by hand: it is the most stable,
+          // most shared code, so it gets its own long-lived cache entry that
+          // app-only releases never invalidate. Everything else is left to
+          // Rollup's default placement, which puts a dependency in the chunk
+          // of its importer — so libraries used only by lazily-loaded routes
+          // (dnd-kit, react-dropzone, image-zoom, motion) load with that route
+          // instead of upfront. A blanket `node_modules -> vendor` rule here
+          // previously forced all of them into the initial payload.
+          // Grouping is kept this coarse deliberately: fine-grained
+          // manualChunks is how Rollup circular-init crashes happen.
           manualChunks(id) {
-            if (id.includes('node_modules')) return 'vendor'
+            if (/node_modules\/(react|react-dom|react-router|react-router-dom|scheduler)\//.test(id)) {
+              return 'react-core'
+            }
           }
         }
       }

@@ -264,7 +264,7 @@ Use `bg-playing` / `text-playing` for anything that means "this is being listene
 
 There is a concrete plan to close all three: [`docs/GAP-CLOSURE-PLAN.md`](docs/GAP-CLOSURE-PLAN.md).
 
-- The vendor chunk (React, Radix, etc.) is one ~745 kB bundle, loaded upfront — a further split was diminishing returns against the work still ahead when this was decided; route-level code is already split per-page.
+- ~~The vendor chunk (React, Radix, etc.) is one ~745 kB bundle, loaded upfront~~ **Closed.** Upfront JS is now ~187 kB gzipped (entry + a cache-stable `react-core` chunk), down ~27% — the blanket vendor rule was pulling lazy-route dependencies into the initial payload, and framer-motion (the app's heaviest dependency) served one three-button animation now done in CSS. `ANALYZE=1 npm run build` writes a treemap to `dist/stats.html`.
 - Series ordering depends on converted metadata (see `scripts/libation-to-abs.mjs` in `docs/PLAN.md`); books added without running the converter fall back to whatever the ID3 tags say.
 - Broader Socket.IO live-sync beyond scan status is the main thing still open post-1.0.
 

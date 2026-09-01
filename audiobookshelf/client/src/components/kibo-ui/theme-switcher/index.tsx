@@ -2,7 +2,6 @@
 
 import { useControllableState } from "@radix-ui/react-use-controllable-state";
 import { Monitor, Moon, Sun } from "lucide-react";
-import { motion } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 
@@ -60,6 +59,12 @@ export const ThemeSwitcher = ({
     return null;
   }
 
+  // Upstream Kibo animates the active pill with framer-motion's layoutId.
+  // The pill only ever slides between three fixed 24px (w-6) slots, so a CSS
+  // transform transition reproduces it — framer-motion was this app's single
+  // heaviest dependency and this was its only call site.
+  const activeIndex = themes.findIndex(({ key }) => key === theme);
+
   return (
     <div
       className={cn(
@@ -67,6 +72,13 @@ export const ThemeSwitcher = ({
         className
       )}
     >
+      {activeIndex >= 0 && (
+        <div
+          aria-hidden
+          className="absolute top-1 left-1 h-6 w-6 rounded-full bg-secondary transition-transform duration-300 ease-out motion-reduce:transition-none"
+          style={{ transform: `translateX(${activeIndex * 100}%)` }}
+        />
+      )}
       {themes.map(({ key, icon: Icon, label }) => {
         const isActive = theme === key;
 
@@ -78,13 +90,6 @@ export const ThemeSwitcher = ({
             onClick={() => handleThemeClick(key as "light" | "dark" | "system")}
             type="button"
           >
-            {isActive && (
-              <motion.div
-                className="absolute inset-0 rounded-full bg-secondary"
-                layoutId="activeTheme"
-                transition={{ type: "spring", duration: 0.5 }}
-              />
-            )}
             <Icon
               className={cn(
                 "relative z-10 m-auto h-4 w-4",

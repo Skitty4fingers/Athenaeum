@@ -7,9 +7,20 @@ matching the conventions in [PLAN.md](PLAN.md).
 
 ---
 
-## A. Vendor bundle — stop shipping lazy-route dependencies upfront (~½ day)
+## A. Vendor bundle — stop shipping lazy-route dependencies upfront (~½ day) — ✅ DONE
 
-**The gap:** one ~745 kB vendor chunk, loaded upfront.
+**Outcome (measured):** upfront JS went from 820 kB min / 258 kB gzip (vendor 745.6 + entry 75)
+to 598 kB min / 187 kB gzip (entry 365.9 + react-core 232.5) — −27% gzipped. dnd-kit (45 kB),
+the select machinery (22 kB), dropzone and image-zoom now load with the routes that use them.
+The single biggest win wasn't the chunking at all: the Kibo theme switcher's `motion/react`
+import put ~370 kB (rendered) of framer-motion in the entry chunk to animate one three-button
+pill, replaced with a CSS transform transition and the `motion` dependency removed entirely.
+The 450 kB min working target was reviewed against the treemap and 598 kB is the honest floor
+without app restructuring: everything still upfront (Radix used by the shell, TanStack Query,
+socket.io-client, sonner, tailwind-merge) is imported by always-mounted code. Verified: hash
+stability held (`react-core-Da7l6EHV.js` unchanged across an app-only rebuild), typecheck and
+all 34 unit tests pass, and a headless-Chromium pass over the production build confirmed the
+entry + react-core + lazy-route loading order with no failed chunk requests.
 
 **Root cause, found in code:** `client/vite.config.ts` uses a blanket rule —
 
