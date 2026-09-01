@@ -6,6 +6,11 @@
 /dev.js
 /dev-config/
 /dev-metadata/
+/dev-backup/
+# A throwaway local library to point dev.js at (real audio, never committed).
+/dev-audiobooks/
+# BinaryManager's download scratch file — left behind when a fetch fails.
+/temp.zip
 # Personal local Docker deployment (see README) — its own config/metadata
 # volumes, and a compose file hardcoding this machine's library path.
 /docker-data/

@@ -27,6 +27,13 @@ interface AuthState {
    * record (unread); otherwise it replaces or adds it.
    */
   setMediaProgress: (libraryItemId: string, progress: MediaProgress | null) => void
+  /**
+   * Replaces the user record from a `user_updated` socket event, so an admin
+   * changing this account's permissions (or another device changing its
+   * settings) takes effect without a re-login. Ignores anything that isn't a
+   * user object, and never runs while signed out.
+   */
+  applyUserUpdate: (user: unknown) => void
 }
 
 function applySession(data: LoginResponse) {
@@ -89,6 +96,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (!user) return
     const withoutItem = user.mediaProgress.filter((mp) => !(mp.libraryItemId === libraryItemId && !mp.episodeId))
     set({ user: { ...user, mediaProgress: progress ? [...withoutItem, progress] : withoutItem } })
+  },
+
+  applyUserUpdate(incoming) {
+    const { user } = get()
+    if (!user || !incoming || typeof incoming !== 'object') return
+    const next = incoming as User
+    if (next.id !== user.id) return
+    // The server's browser-facing user JSON (User#toOldJSONForBrowser) carries
+    // no `accessToken` — it is issued at login and lives in the api module.
+    // Spreading the payload over the existing record keeps it rather than
+    // blanking the field every time an event arrives.
+    set({ user: { ...user, ...next, accessToken: user.accessToken } })
   },
 
   async updateServerSettings(patch) {

@@ -266,7 +266,7 @@ There is a concrete plan to close all three: [`docs/GAP-CLOSURE-PLAN.md`](docs/G
 
 - ~~The vendor chunk (React, Radix, etc.) is one ~745 kB bundle, loaded upfront~~ **Closed.** Upfront JS is now ~187 kB gzipped (entry + a cache-stable `react-core` chunk), down ~27% — the blanket vendor rule was pulling lazy-route dependencies into the initial payload, and framer-motion (the app's heaviest dependency) served one three-button animation now done in CSS. `ANALYZE=1 npm run build` writes a treemap to `dist/stats.html`.
 - Series ordering depends on converted metadata (see `scripts/libation-to-abs.mjs` in `docs/PLAN.md`); books added without running the converter fall back to whatever the ID3 tags say.
-- Broader Socket.IO live-sync beyond scan status is the main thing still open post-1.0.
+- Socket.IO live-sync now covers items, libraries, scans and the current user's progress — edit metadata or listen on another device and an open browser updates without a reload. Collections/playlists, author/series pages and player session toasts (Tier 2) are still open.
 
 ## License
 

@@ -65,7 +65,27 @@ with one more manual group only if measured.
 
 ---
 
-## B. Broader Socket.IO live-sync (~2 days for both tiers)
+## B. Broader Socket.IO live-sync (~2 days for both tiers) — Tier 1 ✅ DONE
+
+**Tier 1 outcome:** shipped as `src/lib/socket-sync.ts`, installed once from `AppShell`. The
+event → query-key table is a pure function (`keysForEvent`) with 14 unit tests, and three e2e
+tests in `e2e/live-sync.spec.ts` verify it against a real server: a rename made from another
+device appears in an open grid without a reload, progress synced from a foreign playback
+session flips the item page's action to "Resume", and this tab's own 15s playback heartbeats
+cause **zero** grid refetches. That last one was verified by control experiment — with the
+own-session guard removed the same test measures 2 refetches per 40 s, so it fails when the
+behavior regresses rather than passing vacuously.
+
+Two deviations from the plan below, both found while building:
+- `user_updated` carries the full user record, so it is a store patch with *no* query keys —
+  `applyUserUpdate` merges it while preserving `accessToken`, which the server's browser-facing
+  user JSON deliberately omits.
+- The coalescing window runs from the first pending event rather than resetting per event. A
+  resetting debounce starves during a scan's burst and never flushes until the burst ends.
+
+Tier 2 below is still open.
+
+### Original plan
 
 **The gap:** the client subscribes to exactly two of the server's ~40 socket events
 (`task_started`/`task_finished` for scan status). Everything else — edits from another

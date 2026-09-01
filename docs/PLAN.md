@@ -115,9 +115,22 @@ for adding a library, scanning, editing an item, or managing users.
   handshake (see server/SocketAuthority.js). Caught a real bug while building this: the first
   `io()` argument is the *origin* to connect to, not a path prefix — passing `basePath` there made
   socket.io-client treat `/audiobookshelf` as a namespace and silently never open a real connection.
-  `path` is where the base path actually belongs. Currently wired to `task_started`/`task_finished`
-  for scan status; the other ~28 events (`item_updated`, `series_updated`, ...) aren't subscribed to
-  yet — cross-client live sync beyond scanning is still open.
+  `path` is where the base path actually belongs.
+
+- [x] **Live sync, Tier 1** — done
+  `src/lib/socket-sync.ts` — a declarative event → query-key table (`keysForEvent`, pure and
+  unit-tested) installed once from `AppShell`, covering item add/update/remove (single and batch),
+  library add/update/remove, `task_finished`, `user_item_progress_updated` and `user_updated`.
+  Invalidations coalesce on a 300 ms window measured from the *first* pending event, not reset per
+  event — a resetting debounce would starve during a scan's burst and never flush. Two things are
+  patched into Zustand rather than invalidated, because no query mirrors them: `user.mediaProgress`
+  (what the sidebar count, Continue Listening and grid progress bars read) and the user record
+  itself. Progress events from this tab's *own* playback session skip invalidation — the player
+  syncs every 15s and the server echoes it back, so without that guard the grid refetched twice a
+  minute during playback (measured: 2 refetches per 40s with the guard removed, 0 with it).
+  `episode_*`, `rss_feed_*`, `metadata_embed_queue_update` and `backup_applied` stay unsubscribed —
+  those features are out of scope, so listening would only cost refetches for surfaces that don't
+  exist. Tier 2 (collections/playlists, authors/series, session/stream toasts) is still open.
 
 - [x] **Library settings and scanning** — done
   `/settings`, admin-gated, linked from the account menu. Folders (add/remove, with a destructive-

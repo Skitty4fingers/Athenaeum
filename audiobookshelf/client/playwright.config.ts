@@ -20,6 +20,10 @@ export default defineConfig({
     // resolves to '.../signin', not '.../audiobookshelf/signin') — found by
     // actually running this against the real server, not assumed.
     baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:3000/audiobookshelf/',
-    trace: 'retain-on-failure'
+    trace: 'retain-on-failure',
+    // Escape hatch for environments that already ship a Chromium and can't
+    // download Playwright's pinned revision (CI images, sandboxes, distro
+    // packages). Unset, Playwright resolves its own browser as usual.
+    ...(process.env.E2E_CHROMIUM_PATH ? { launchOptions: { executablePath: process.env.E2E_CHROMIUM_PATH } } : {})
   }
 })
