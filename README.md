@@ -1,24 +1,35 @@
 # Athenaeum
 
-A modern, self-hosted audiobook player. Athenaeum keeps [audiobookshelf](https://github.com/advplyr/audiobookshelf)'s battle-tested server — the same Express/Sequelize/Socket.IO backend, the same HTTP API the official app and third-party clients (ShelfPlayer, Absorb, SoundLeaf) already speak — and replaces its Nuxt 2 client with a React 19 SPA built on Tailwind CSS v4, shadcn/ui, and Kibo UI.
+**A self-hosted audiobook player that feels like it was built this decade — because it was.**
+
+Athenaeum is a ground-up modernization of the [audiobookshelf](https://github.com/advplyr/audiobookshelf) web experience. It keeps everything that makes audiobookshelf great — the battle-tested Express server, your library, your listening progress, and the HTTP API that the official mobile app and third-party clients (ShelfPlayer, Absorb, SoundLeaf) already speak — and replaces the aging Nuxt 2 frontend with a fast, polished React 19 single-page app.
+
+Your server. Your books. A brand-new face.
 
 ![Library view](docs/screenshots/library.png)
 
-## Contents
+![React 19](https://img.shields.io/badge/React-19-61dafb?logo=react&logoColor=white)
+![TypeScript 5.9](https://img.shields.io/badge/TypeScript-5.9-3178c6?logo=typescript&logoColor=white)
+![Vite 7](https://img.shields.io/badge/Vite-7-646cff?logo=vite&logoColor=white)
+![Tailwind CSS v4](https://img.shields.io/badge/Tailwind_CSS-v4-38bdf8?logo=tailwindcss&logoColor=white)
+![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue)
 
-- [Screenshots](#screenshots)
-- [Features](#features)
-- [Stack](#stack)
-- [Layout](#layout)
-- [Running locally](#running-locally)
-- [Configuration](#configuration)
-- [Building](#building)
-- [Testing](#testing)
-- [How it works](#how-it-works)
-- [Kibo UI](#kibo-ui)
-- [Design tokens](#design-tokens)
-- [Known gaps](#known-gaps)
-- [License](#license)
+## Why Athenaeum?
+
+Audiobookshelf's server is superb. Its web client, though, is a Nuxt 2 app on a Vue 2 foundation — a framework that reached end-of-life at the end of 2023. Rather than patch around it, Athenaeum rebuilds the entire client on a modern stack while treating the server API as a sacred, unchanged contract:
+
+| | Upstream client | Athenaeum |
+| --- | --- | --- |
+| **Framework** | Nuxt 2 / Vue 2 (EOL) | React 19 + TypeScript 5.9 |
+| **Build tool** | Webpack (via Nuxt 2) | Vite 7 — instant HMR, fast builds |
+| **Styling** | Legacy Tailwind config | Tailwind CSS v4, CSS-first, OKLCH design tokens |
+| **Components** | Hand-rolled Vue components | shadcn/ui + Kibo UI + Radix primitives |
+| **Data layer** | Vuex-era patterns | TanStack Query v5 + Zustand |
+| **Search** | Client-side jump list | ⌘K command palette backed by real server search |
+| **Branding** | Fixed | Rename the whole app from admin settings — no rebuild |
+| **Server & API** | — | **Untouched.** Same database, same endpoints, same mobile apps |
+
+The payoff: the Docker image, your existing library, your listening history, and every mobile client keep working exactly as before — but the browser experience is transformed.
 
 ## Screenshots
 
@@ -37,20 +48,76 @@ A modern, self-hosted audiobook player. Athenaeum keeps [audiobookshelf](https:/
 </tr>
 </table>
 
-## Features
+## Highlights
 
-- **Library browsing** — infinite-scroll grid, sort, in-library search, URL-driven filters, series grouping with reading order, collapsible sidebar filters for genres/authors/narrators
-- **Player** — persistent bar plus a full-screen Now Playing view, chapter navigation, variable speed, configurable skip amounts, keyboard shortcuts, OS media-key integration, a sleep timer, bookmarks, and an "Up next" prompt for the next book in a series
-- **Real search** — ⌘K command palette backed by the server's own search, not a client-side jump list
-- **Metadata tools** — a full item editor, a chapter editor, a cover picker across seven providers, and enrichment from Audible/Google Books/Open Library/iTunes reviewed field by field before anything is written
-- **Bulk actions** — multi-select on the library grid for collection/playlist add, finished/unread, bulk tag/genre edits, and delete, all in one action across many books
-- **Collections & playlists** — shared admin-curated shelves and personal per-user playlists, both drag-to-reorder
-- **Admin surface** — library settings (folders, metadata precedence, scan status), user management, backups & logs, and an admin-configurable app name — all without `ssh` or `curl`
-- **Listening stats** — total time, a 14-day activity chart, day-of-week breakdown, and recent sessions
-- **Help & mobile app setup** — dynamic server address / username, and links to every compatible mobile client
-- **Runtime branding** — rename the app from Settings → System, no rebuild needed; see [Configuration](#configuration)
+- 🎧 **A player worth living in** — persistent bar plus a full-screen Now Playing view, chapter navigation, variable speed, configurable skips, keyboard shortcuts, OS media-key integration, a sleep timer, bookmarks, and an "Up next" prompt for the next book in a series
+- 📚 **Library browsing that scales** — infinite-scroll grid, sort, in-library search, URL-driven filters, series grouping with reading order, collapsible sidebar filters for genres/authors/narrators
+- ⌘K **Real search** — a command palette backed by the server's own search index, not a client-side jump list
+- ✨ **Metadata superpowers** — a full item editor, a chapter editor, a cover picker across seven providers, and field-by-field enrichment from Audible, Google Books, Open Library, and iTunes — reviewed before anything is written
+- ☑️ **Bulk actions** — multi-select on the grid for collection/playlist add, finished/unread, tag/genre edits, and delete, across many books at once
+- 🗂️ **Collections & playlists** — shared admin-curated shelves and personal per-user playlists, both drag-to-reorder
+- 🛠️ **A real admin surface** — library settings, user management, backups & logs, scan status — all in the UI, no `ssh` or `curl` required
+- 📊 **Listening stats** — total time, a 14-day activity chart, day-of-week breakdown, and recent sessions
+- 📱 **Mobile-app onboarding** — a Help page with your server's live connection details and links to every compatible client
+- 🏷️ **Runtime branding** — "Athenaeum" isn't load-bearing; rename the app from Settings → System with no rebuild
 
 The sidebar deliberately has no library switcher — Athenaeum is single-library by design, so that space goes to filters and listening state instead. Podcasts, the ebook/comic reader, public share links, and RSS/email delivery are out of scope by decision; the server still supports all of it for other clients. Full history, scope decisions, and known bugs are tracked in [`docs/PLAN.md`](docs/PLAN.md).
+
+## Quick start
+
+### Docker (recommended)
+
+Build this fork's image — upstream's Dockerfile works unmodified, bundling the new client and the untouched server into one image:
+
+```bash
+cd audiobookshelf && docker build -t athenaeum:local .
+```
+
+```bash
+docker run -d --name athenaeum -p 13378:80 \
+  -v ./docker-data/config:/config \
+  -v ./docker-data/metadata:/metadata \
+  -v /path/to/your/audiobooks:/audiobooks \
+  --restart unless-stopped \
+  athenaeum:local
+```
+
+Verified against a real 175-book library: build, root-user init, library creation, and a full scan all complete cleanly, matching the dev-server library exactly. A `docker-compose.local.yml` following this shape (with real host paths) is a reasonable way to keep the settings around; it's gitignored since it'll hardcode machine-specific paths. Note that the checked-in `docker-compose.yml` is upstream's example and points at the public `ghcr.io/advplyr/audiobookshelf` image — build locally to run *this* fork.
+
+### Development
+
+Two processes. The server first:
+
+```bash
+cd audiobookshelf && node index.js --dev
+```
+
+Then the client, which proxies API/socket traffic to it:
+
+```bash
+cd audiobookshelf/client && npm run dev
+```
+
+The app is at <http://localhost:3000/audiobookshelf>. The server listens on `:3333`.
+
+On a fresh database, create the root user before signing in:
+
+```bash
+curl -X POST http://localhost:3333/audiobookshelf/init -H "Content-Type: application/json" -d '{"newRoot":{"username":"admin","password":"CHANGE_ME"}}'
+```
+
+## Contents
+
+- [Stack](#stack)
+- [Layout](#layout)
+- [Configuration](#configuration)
+- [Building](#building)
+- [Testing](#testing)
+- [How it works](#how-it-works)
+- [Kibo UI](#kibo-ui)
+- [Design tokens](#design-tokens)
+- [Known gaps](#known-gaps)
+- [License](#license)
 
 ## Stack
 
@@ -87,28 +154,6 @@ Athenaeum/
 
 `audiobookshelf/` started as a separate clone of upstream on its own branch and has since been folded into this repo as a normal directory, so the whole project lives in one place and one history. It began as a shallow, single-commit clone, so no meaningful git history was lost in the flattening. To check for upstream changes, diff against a fresh clone of `advplyr/audiobookshelf` rather than `git pull` — there is no longer a tracking remote for it.
 
-## Running locally
-
-Two processes. The server first:
-
-```bash
-cd audiobookshelf && node index.js --dev
-```
-
-Then the client, which proxies API/socket traffic to it:
-
-```bash
-cd audiobookshelf/client && npm run dev
-```
-
-The app is at <http://localhost:3000/audiobookshelf>. The server listens on `:3333`.
-
-On a fresh database, create the root user before signing in:
-
-```bash
-curl -X POST http://localhost:3333/audiobookshelf/init -H "Content-Type: application/json" -d '{"newRoot":{"username":"admin","password":"CHANGE_ME"}}'
-```
-
 ## Configuration
 
 ### Base path
@@ -144,24 +189,7 @@ cd audiobookshelf/client && npm run build
 
 Output goes to `client/dist`, which is exactly where the Express server expects it (`server/Server.js`). `npm run generate` is aliased to the same thing so the upstream root script (`npm run client`) and the Dockerfile keep working unchanged.
 
-### Docker
-
-`audiobookshelf/Dockerfile` is upstream's, unmodified — it builds this fork's own client (`npm run generate`) and server into one image, so it works without changes. `docker-compose.yml` at the same level is upstream's example and still points at the public `ghcr.io/advplyr/audiobookshelf` image; to run *this* fork instead, build locally:
-
-```bash
-cd audiobookshelf && docker build -t athenaeum:local .
-```
-
-```bash
-docker run -d --name athenaeum -p 13378:80 \
-  -v ./docker-data/config:/config \
-  -v ./docker-data/metadata:/metadata \
-  -v /path/to/your/audiobooks:/audiobooks \
-  --restart unless-stopped \
-  athenaeum:local
-```
-
-Verified against a real 175-book library: build, root-user init, library creation, and a full scan all complete cleanly against the containerized instance, matching the dev-server library exactly. `/config` and `/metadata` are separate from `dev-config`/`dev-metadata` used by `npm run dev` — the two don't share a database. A `docker-compose.local.yml` following this shape (with real host paths for your library) is a reasonable way to keep the settings around; it's gitignored since it'll hardcode paths specific to your machine.
+For the Docker build, see [Quick start](#quick-start). `/config` and `/metadata` in the container are separate from the `dev-config`/`dev-metadata` used by `npm run dev` — the two don't share a database.
 
 ## Testing
 
@@ -175,7 +203,7 @@ Unit tests (Vitest) over pure logic — filter encoding, duration/clock/byte for
 cd audiobookshelf/client && E2E_USERNAME=... E2E_PASSWORD=... npm run test:e2e
 ```
 
-One Playwright pass over sign-in → browse → play, against a real running server and real library (both processes from [Running locally](#running-locally) need to already be up). Point it elsewhere with `E2E_BASE_URL`. Use a disposable account, not your own — it starts playing whatever the first book in the grid is.
+One Playwright pass over sign-in → browse → play, against a real running server and real library (both processes from [Quick start](#quick-start) need to already be up). Point it elsewhere with `E2E_BASE_URL`. Use a disposable account, not your own — it starts playing whatever the first book in the grid is.
 
 ## How it works
 
@@ -240,4 +268,4 @@ Use `bg-playing` / `text-playing` for anything that means "this is being listene
 
 ## License
 
-GPL-3.0, inherited from upstream [audiobookshelf](https://github.com/advplyr/audiobookshelf) — see [`LICENSE`](LICENSE). Any fork of GPL-licensed code stays GPL.
+GPL-3.0, inherited from upstream [audiobookshelf](https://github.com/advplyr/audiobookshelf) — see [`LICENSE`](LICENSE). Any fork of GPL-licensed code stays GPL. Enormous thanks to [advplyr](https://github.com/advplyr) and the audiobookshelf contributors for the server this project stands on.
