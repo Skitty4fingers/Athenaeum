@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, Layers } from 'lucide-react'
+import { ArrowLeft, Layers, ListX } from 'lucide-react'
 
 import { useAuthStore } from '@/stores/auth'
 import { usePlayerStore } from '@/stores/player'
@@ -8,6 +8,8 @@ import { useCurrentLibrary, useLibrarySeries, useSeriesBooks } from '@/hooks/use
 import { formatDuration } from '@/lib/format'
 import { Button } from '@/components/ui/button'
 import { BookCard, BookCardSkeleton } from '@/features/library/BookCard'
+import { SeriesOrderDialog } from './SeriesOrderDialog'
+import { analyzeSeriesOrder, describeSeriesOrder } from '@/lib/series'
 import type { BookMediaMinified, BookSeriesRef, LibraryItemMinified } from '@/types/abs'
 
 const GRID_CLASS = 'grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
@@ -29,6 +31,9 @@ export function SeriesPage() {
   const { seriesId } = useParams<{ seriesId: string }>()
   const defaultLibraryId = useAuthStore((s) => s.defaultLibraryId)
   const user = useAuthStore((s) => s.user)
+  // Mirrors the server's own gate on the write this enables —
+  // LibraryItemController#batchUpdate checks `canUpdate`, not admin status.
+  const canUpdate = useAuthStore((s) => Boolean(s.user?.permissions.update))
   const { library } = useCurrentLibrary(defaultLibraryId ?? undefined)
   const playItem = usePlayerStore((s) => s.play)
 
@@ -47,6 +52,13 @@ export function SeriesPage() {
   }, [user?.mediaProgress])
 
   const totalDuration = useMemo(() => (books ?? []).reduce((sum, item) => sum + ((item.media as BookMediaMinified).duration ?? 0), 0), [books])
+
+  // Reading order is only as good as the sequences the scanner found; books
+  // added without a metadata.json fall back to ID3 tags that are routinely
+  // missing or repeated. Surface that where someone is already looking at the
+  // order, instead of leaving the series silently shuffled.
+  const orderHealth = useMemo(() => analyzeSeriesOrder((books ?? []).map((item) => sequenceFor(item, seriesId!))), [books, seriesId])
+  const orderProblem = describeSeriesOrder(orderHealth)
 
   const finishedCount = (books ?? []).filter((b) => progressByItem.get(b.id)?.isFinished).length
 
@@ -78,6 +90,25 @@ export function SeriesPage() {
           </p>
         )}
       </div>
+
+      {books && books.length > 1 && (orderProblem || canUpdate) && (
+        <div className="mb-6 flex flex-col gap-3 rounded-lg border border-border bg-muted/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-2.5">
+            {orderProblem && <ListX className="mt-0.5 size-4 shrink-0 text-muted-foreground" />}
+            <div className="text-sm">
+              {orderProblem ? (
+                <>
+                  <p className="font-medium">Reading order is incomplete</p>
+                  <p className="text-muted-foreground">{orderProblem}</p>
+                </>
+              ) : (
+                <p className="text-muted-foreground">Reading order looks complete.</p>
+              )}
+            </div>
+          </div>
+          {canUpdate && <SeriesOrderDialog seriesId={seriesId!} seriesName={series?.name ?? 'Series'} books={books} />}
+        </div>
+      )}
 
       {isPending && (
         <div className={GRID_CLASS}>

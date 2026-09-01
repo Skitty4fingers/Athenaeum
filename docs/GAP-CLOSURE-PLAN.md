@@ -133,7 +133,31 @@ subscribed to" accordingly.
 
 ---
 
-## C. Series ordering without the converter (~2–3 days, in independent slices)
+## C. Series ordering without the converter (~2–3 days, in independent slices) — C1 + C2 ✅ DONE
+
+**C1 + C2 outcome:** `src/lib/series.ts` analyses a series' sequences (pure, 15 unit tests) and
+`SeriesPage` shows a banner naming the actual problem — "1 of 2 books has no position", "positions
+#1, #2 are used more than once" — which clears once the order is complete. From that banner,
+`SeriesOrderDialog` drag-reorders the series and writes sequences 1..N through the existing batch
+endpoint. Gated on `permissions.update`, mirroring the server's own check on that route
+(`LibraryItemController#batchUpdate`) rather than the looser admin test used elsewhere.
+
+**The thing that made C2 harder than planned, found empirically:** the plan assumed the reorder
+could write from the list data already on screen. It cannot. Under `filter=series.<id>` the server
+attaches only the *filtered* series to each item, so a book in two series looks like it is in one —
+and `updateSeriesFromRequest` replaces a book's series list wholesale. Writing from list data
+therefore silently deletes the book's other series memberships; verified against a running server
+by doing exactly that and watching a second series disappear. `useReorderSeries` re-reads each
+book's full series list from the expanded item endpoint first and changes only the target
+sequence. `e2e/series-order.spec.ts` asserts that property directly, so a future refactor that
+"optimises away" the extra read fails the suite.
+
+Single-book series are never flagged — one book cannot be out of order with itself, and flagging
+them would put a warning on every standalone the scanner filed under a series name.
+
+**C3 (converter `--watch`, upload sequence round-trip) is still open.**
+
+### Original plan
 
 **The gap:** correct series order depends on `scripts/libation-to-abs.mjs` having produced a
 `metadata.json`; books that arrive any other way (in-app upload, manual copy) fall back to

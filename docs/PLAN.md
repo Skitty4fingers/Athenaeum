@@ -49,7 +49,7 @@ If VoxSilo ever needs data the API doesn't expose, add a sidecar service (as
 | App code | ~12,700 lines across 12 feature modules — Phases 0 through 4 all complete |
 | Working | Everything in the README's Status section — auth, browse/filter/search, series, author pages, item detail, metadata enrichment/editing, cover/chapter editing, full player (sleep timer, up-next, bookmarks, resume-after-reload), collections/playlists with drag-to-reorder, multi-select batch actions, upload, listening stats, household user management, library settings, backups/logs |
 | Bundle | route chunks 2–45 kB each; upfront JS is entry ~366 kB + react-core ~233 kB (~187 kB gzipped total), down from ~820 kB after dropping the blanket vendor chunk and framer-motion (see docs/GAP-CLOSURE-PLAN.md lane A) |
-| Tests | Vitest unit tests (34, over filter encoding/formatting/player track mapping) + one Playwright e2e pass (sign-in → browse → play) |
+| Tests | Vitest unit tests (63, over filter encoding/formatting/player track mapping, the socket-sync event table, and series-order health) + 5 Playwright e2e tests (sign-in → browse → play, live sync, series reordering) |
 | Real library | 175 items scanned from `C:/Users/Scott/Libation/Books` (172 real books) + a 3-book test fixture, both as folders on the one library |
 
 ---
@@ -116,6 +116,15 @@ for adding a library, scanning, editing an item, or managing users.
   `io()` argument is the *origin* to connect to, not a path prefix — passing `basePath` there made
   socket.io-client treat `/audiobookshelf` as a namespace and silently never open a real connection.
   `path` is where the base path actually belongs.
+
+- [x] **Series order: detect and repair in-app** — done
+  `src/lib/series.ts` (pure, unit-tested) flags missing or duplicated sequences; `SeriesPage`
+  states the problem and offers `SeriesOrderDialog`, a drag-to-reorder editor writing 1..N through
+  `POST /items/batch/update`. The editor must re-read each book's full series list from the
+  expanded item endpoint before writing: under `filter=series.<id>` the server attaches only the
+  filtered series, and `updateSeriesFromRequest` replaces the list wholesale, so writing from list
+  data deletes a book's other series memberships — confirmed by doing it against a real server and
+  watching a second series vanish. `e2e/series-order.spec.ts` locks that property down.
 
 - [x] **Live sync, Tier 1** — done
   `src/lib/socket-sync.ts` — a declarative event → query-key table (`keysForEvent`, pure and

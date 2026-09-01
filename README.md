@@ -265,7 +265,7 @@ Use `bg-playing` / `text-playing` for anything that means "this is being listene
 There is a concrete plan to close all three: [`docs/GAP-CLOSURE-PLAN.md`](docs/GAP-CLOSURE-PLAN.md).
 
 - ~~The vendor chunk (React, Radix, etc.) is one ~745 kB bundle, loaded upfront~~ **Closed.** Upfront JS is now ~187 kB gzipped (entry + a cache-stable `react-core` chunk), down ~27% — the blanket vendor rule was pulling lazy-route dependencies into the initial payload, and framer-motion (the app's heaviest dependency) served one three-button animation now done in CSS. `ANALYZE=1 npm run build` writes a treemap to `dist/stats.html`.
-- Series ordering depends on converted metadata (see `scripts/libation-to-abs.mjs` in `docs/PLAN.md`); books added without running the converter fall back to whatever the ID3 tags say.
+- Series ordering can now be inspected and repaired in the app: a series page flags missing or duplicate positions and offers a drag-to-reorder editor, so books added without running the converter are fixable without touching metadata files. Automatic prevention at import time (converter watch mode, upload sequence round-trip) is still open.
 - Socket.IO live-sync now covers items, libraries, scans and the current user's progress — edit metadata or listen on another device and an open browser updates without a reload. Collections/playlists, author/series pages and player session toasts (Tier 2) are still open.
 
 ## License
