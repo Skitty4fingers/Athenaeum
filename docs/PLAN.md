@@ -48,8 +48,8 @@ If VoxSilo ever needs data the API doesn't expose, add a sidecar service (as
 | --- | --- |
 | App code | ~12,700 lines across 12 feature modules — Phases 0 through 4 all complete |
 | Working | Everything in the README's Status section — auth, browse/filter/search, series, author pages, item detail, metadata enrichment/editing, cover/chapter editing, full player (sleep timer, up-next, bookmarks, resume-after-reload), collections/playlists with drag-to-reorder, multi-select batch actions, upload, listening stats, household user management, library settings, backups/logs |
-| Bundle | route chunks 2–45 kB each; upfront JS is entry ~366 kB + react-core ~233 kB (~187 kB gzipped total), down from ~820 kB after dropping the blanket vendor chunk and framer-motion (see docs/GAP-CLOSURE-PLAN.md lane A) |
-| Tests | Vitest unit tests (63, over filter encoding/formatting/player track mapping, the socket-sync event table, and series-order health) + 5 Playwright e2e tests (sign-in → browse → play, live sync, series reordering) |
+| Bundle | route chunks 2–45 kB each; upfront JS is entry ~370 kB + react-core ~233 kB (~188 kB gzipped total), down from ~820 kB / 258 kB gzipped after dropping the blanket vendor chunk and framer-motion (see docs/GAP-CLOSURE-PLAN.md lane A). `ANALYZE=1 npm run build` writes a treemap. |
+| Tests | Vitest unit tests (78, over filter encoding/formatting/player track mapping, the socket-sync event table, series-order health and the series-sequence merge) + 7 Playwright e2e tests (sign-in → browse → play, live sync, series reordering). ESLint is wired up and passes with 0 errors; 19 warnings are React-Compiler diagnostics tracked as debt. |
 | Real library | 175 items scanned from `C:/Users/Scott/Libation/Books` (172 real books) + a 3-book test fixture, both as folders on the one library |
 
 ---

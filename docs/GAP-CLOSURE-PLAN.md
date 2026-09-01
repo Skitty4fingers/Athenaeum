@@ -1,17 +1,23 @@
 # Closing the known gaps
 
-Plan for the three items in the README's [Known gaps](../README.md#known-gaps). Ordered by
-effort-to-value: A is a half-day quick win, B is the post-1.0 headline feature, C is the
-deepest and can proceed in independent slices. Effort figures assume one person and are rough,
-matching the conventions in [PLAN.md](PLAN.md).
+**All three lanes below are closed.** This is kept as the record of what each one actually
+involved — including where the original plan was wrong — rather than as outstanding work. The
+README's [Known gaps](../README.md#known-gaps) now lists what remains true instead.
+
+These were the three items the README used to list. Ordered at the time by effort-to-value: A a
+half-day quick win, B the post-1.0 headline feature, C the deepest and splittable into independent
+slices. Effort figures assume one person and are rough, matching the conventions in
+[PLAN.md](PLAN.md).
 
 ---
 
 ## A. Vendor bundle — stop shipping lazy-route dependencies upfront (~½ day) — ✅ DONE
 
-**Outcome (measured):** upfront JS went from 820 kB min / 258 kB gzip (vendor 745.6 + entry 75)
-to 598 kB min / 187 kB gzip (entry 365.9 + react-core 232.5) — −27% gzipped. dnd-kit (45 kB),
-the select machinery (22 kB), dropzone and image-zoom now load with the routes that use them.
+**Outcome (measured at the time of this change):** upfront JS went from 820 kB min / 258 kB gzip
+(vendor 745.6 + entry 75) to 598 kB min / 187 kB gzip (entry 365.9 + react-core 232.5) — −27%
+gzipped. dnd-kit (45 kB), the select machinery (22 kB), dropzone and image-zoom now load with the
+routes that use them. (The figure has grown a little since, with the features built in lanes B and
+C; PLAN.md's Current state table carries the live number.)
 The single biggest win wasn't the chunking at all: the Kibo theme switcher's `motion/react`
 import put ~370 kB (rendered) of framer-motion in the entry chunk to animate one three-button
 pill, replaced with a CSS transform transition and the `motion` dependency removed entirely.
