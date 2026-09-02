@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
 import { getSocket } from '@/lib/socket'
 
 export interface ScanResult {
@@ -24,11 +23,15 @@ interface TaskPayload {
  * "live progress" here honestly means "scanning..." until it's done, then the
  * real counts from the finished task. Anything claiming a percentage or a
  * running item count would be fabricating a signal the server doesn't send.
+ *
+ * This hook owns the *UI state* of a scan only. Refreshing the caches a
+ * finished scan invalidates is `lib/socket-sync.ts`'s job, which subscribes to
+ * `task_finished` app-wide — so a scan started here still refreshes the
+ * library for a user sitting on any other page.
  */
 export function useLibraryScanStatus(libraryId: string | undefined) {
   const [isScanning, setIsScanning] = useState(false)
   const [lastResult, setLastResult] = useState<ScanResult | null>(null)
-  const queryClient = useQueryClient()
 
   useEffect(() => {
     if (!libraryId) return
@@ -46,14 +49,6 @@ export function useLibraryScanStatus(libraryId: string | undefined) {
       if (!isThisLibraryScan(task)) return
       setIsScanning(false)
       if (task.data?.scanResults) setLastResult(task.data.scanResults)
-
-      // A scan can add, update, or remove items — refresh everything derived
-      // from the library's contents rather than guessing which changed.
-      void queryClient.invalidateQueries({ queryKey: ['library-items'] })
-      void queryClient.invalidateQueries({ queryKey: ['library-stats', libraryId] })
-      void queryClient.invalidateQueries({ queryKey: ['library-filterdata', libraryId] })
-      void queryClient.invalidateQueries({ queryKey: ['library-series', libraryId] })
-      void queryClient.invalidateQueries({ queryKey: ['libraries'] })
     }
 
     socket.on('task_started', onStarted)
@@ -62,7 +57,7 @@ export function useLibraryScanStatus(libraryId: string | undefined) {
       socket.off('task_started', onStarted)
       socket.off('task_finished', onFinished)
     }
-  }, [libraryId, queryClient])
+  }, [libraryId])
 
   return { isScanning, lastResult }
 }

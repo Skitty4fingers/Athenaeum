@@ -56,7 +56,10 @@ The payoff: the Docker image, your existing library, your listening history, and
 - ✨ **Metadata superpowers** — a full item editor, a chapter editor, a cover picker across seven providers, and field-by-field enrichment from Audible, Google Books, Open Library, and iTunes — reviewed before anything is written
 - ☑️ **Bulk actions** — multi-select on the grid for collection/playlist add, finished/unread, tag/genre edits, and delete, across many books at once
 - 🗂️ **Collections & playlists** — shared admin-curated shelves and personal per-user playlists, both drag-to-reorder
+- 🔢 **Series order you can actually fix** — a series page flags books with a missing or duplicated position and opens a drag-to-reorder editor, so a set that scanned in the wrong order is repaired in the UI instead of by hand-editing metadata files
+- 🔄 **Live sync** — edit metadata in another browser, or listen on your phone, and open pages update over Socket.IO without a reload; a session closed elsewhere stops playback here instead of silently desyncing
 - 🛠️ **A real admin surface** — library settings, user management, backups & logs, scan status — all in the UI, no `ssh` or `curl` required
+- 📡 **Activity at a glance** — an admin page showing who is connected and on how many devices, what each person is listening to right now and how far in, when everyone was last seen, and what has been played recently; it updates live as people connect and start or stop listening
 - 📊 **Listening stats** — total time, a 14-day activity chart, day-of-week breakdown, and recent sessions
 - 📱 **Mobile-app onboarding** — a Help page with your server's live connection details and links to every compatible client
 - 🏷️ **Runtime branding** — "Athenaeum" isn't load-bearing; rename the app from Settings → System with no rebuild
@@ -143,7 +146,7 @@ Athenaeum/
 │   ├── PLAN.md                 Roadmap — what's built, what's left, in what order
 │   └── screenshots/             Images used in this README
 ├── media/audiobooks/           Local dev library — drop Libation output here (see its README)
-├── scripts/                    libation-to-abs.mjs — sidecar → abs metadata.json
+├── scripts/                    libation-to-abs.mjs — sidecar → abs metadata.json (--watch to keep up)
 ├── services/openlibrary-provider/  Metadata enrichment service (see its README)
 └── audiobookshelf/             The fork
     ├── server/                 Upstream Express server — unmodified except one additive
@@ -191,19 +194,43 @@ Output goes to `client/dist`, which is exactly where the Express server expects 
 
 For the Docker build, see [Quick start](#quick-start). `/config` and `/metadata` in the container are separate from the `dev-config`/`dev-metadata` used by `npm run dev` — the two don't share a database.
 
+### Bundle size
+
+Upfront JavaScript is roughly 188 kB gzipped: the entry chunk plus a `react-core` chunk holding
+just the React runtime, so an app-only release never invalidates the cached copy of it. Everything
+else is left to Rollup's default placement, which keeps a dependency with the lazy route that
+imports it — a blanket `node_modules → vendor` rule here previously dragged them all into the
+first paint.
+
+Before arguing about bundle size, measure it:
+
+```bash
+cd audiobookshelf/client && ANALYZE=1 npm run build   # writes dist/stats.html
+```
+
 ## Testing
 
 ```bash
 cd audiobookshelf/client && npm test
 ```
 
-Unit tests (Vitest) over pure logic — filter encoding, duration/clock/byte formatting, the player's track/global-time mapping. No server needed.
+Unit tests (Vitest) over pure logic — filter encoding, duration/clock/byte formatting, the player's track/global-time mapping, the live-sync event → query-key table, series-order health, and the series-sequence merge that keeps a book's other series intact. No server needed.
+
+```bash
+cd audiobookshelf/client && npm run lint && npm run typecheck
+```
+
+Lint passes clean. The remaining warnings are React Compiler diagnostics (`react-hooks` v6) on the sync-a-draft-from-a-prop effect most edit forms here use — real debt to pay down deliberately, kept visible rather than errored out or switched off.
 
 ```bash
 cd audiobookshelf/client && E2E_USERNAME=... E2E_PASSWORD=... npm run test:e2e
 ```
 
-One Playwright pass over sign-in → browse → play, against a real running server and real library (both processes from [Quick start](#quick-start) need to already be up). Point it elsewhere with `E2E_BASE_URL`. Use a disposable account, not your own — it starts playing whatever the first book in the grid is.
+Playwright tests over sign-in → browse → play, live sync, and series reordering, against a real running server and real library (both processes from [Quick start](#quick-start) need to already be up). Point it elsewhere with `E2E_BASE_URL`, and set `E2E_CHROMIUM_PATH` if the environment ships its own Chromium.
+
+Use a disposable account and library, not your own — these start playback, rewrite one book's title and series sequences, and create a collection, restoring what they changed afterwards.
+
+Every spec signs in for real and the server rate-limits authentication (40 attempts per 10 minutes), so repeated full-suite runs start failing with "Too many authentication requests". Start the dev server with `RATE_LIMIT_AUTH_MAX=0` while iterating on them.
 
 ## How it works
 
@@ -225,7 +252,58 @@ Position is reported to `POST /api/session/:id/sync` every 15s while playing, an
 node scripts/libation-to-abs.mjs "./media/audiobooks" --dry-run
 ```
 
+Timing matters more than it looks: audiobookshelf reads `metadata.json` *at scan time*, and its
+folder watcher picks a book up as soon as Libation finishes writing it. Converting after the fact
+means the first scan already recorded whatever the ID3 tags said. Watch mode closes that window:
+
+```bash
+node scripts/libation-to-abs.mjs "./media/audiobooks" --watch --interval=30
+```
+
+It polls rather than using `fs.watch`, which is unreliable across platforms and on the network
+shares people typically keep a Libation folder on, and it stays dependency-free. A pass that throws
+is logged and the watch continues — a watcher that dies on the first half-written folder is worse
+than none. `--force` is refused here, since it would rewrite every book on a timer.
+
 Details in [`media/audiobooks/README.md`](media/audiobooks/README.md).
+
+### Live sync
+
+`src/lib/socket-sync.ts` maps the server's Socket.IO events to the React Query keys they make
+stale — a declarative table (`keysForEvent`, pure and unit-tested) installed once from `AppShell`.
+The server stays the source of truth: the layer never patches cached entities from event payloads,
+it only marks queries stale and lets React Query refetch what is actually mounted.
+
+Two things are patched directly into Zustand instead, because no query mirrors them:
+`user.mediaProgress` (what the sidebar count, Continue Listening and grid progress bars read) and
+the user record itself.
+
+Bursts are coalesced on a 300 ms window measured from the *first* pending event, so a scan
+touching hundreds of books is one refetch rather than hundreds — a debounce that reset per event
+would starve for the length of the burst.
+
+Progress events from this tab's own playback are deliberately skipped: the player syncs every 15
+seconds and the server echoes that back to the sender, so without the guard the grid refetched
+twice a minute during playback. Podcast, RSS, metadata-embed and backup events are not subscribed
+(out of scope), and neither is `stream_reset`, which only concerns HLS — this client plays files
+directly.
+
+### Admin activity
+
+The activity page (account menu → Activity, admins only) reports server state,
+not anything the client records. Every figure already existed:
+
+| Shown | Source |
+| --- | --- |
+| Users online, open connections | `GET /api/users/online` — `SocketAuthority` counts live sockets per user, so "connections" is browser tabs and apps, not streams |
+| Listening now, position, session time, device | the same call's `openSessions` — the playback sessions the server holds in memory, each carrying its `deviceInfo` |
+| Last seen, joined | the `lastSeen` and `createdAt` the server already keeps on every user |
+| Recent sessions | `GET /api/sessions`, the session history table, joined to its user |
+
+No endpoint was added and nothing new is recorded. It stays current from the
+`user_online` / `user_offline` / `user_stream_update` events, which the server
+sends only to admin clients, with a slow poll as a backstop for the parts no
+event announces — a session's position advances every 15 s without one.
 
 ### Metadata enrichment
 
@@ -262,9 +340,17 @@ Use `bg-playing` / `text-playing` for anything that means "this is being listene
 
 ## Known gaps
 
-- The vendor chunk (React, Radix, etc.) is one ~745 kB bundle, loaded upfront — a further split was diminishing returns against the work still ahead when this was decided; route-level code is already split per-page.
-- Series ordering depends on converted metadata (see `scripts/libation-to-abs.mjs` in `docs/PLAN.md`); books added without running the converter fall back to whatever the ID3 tags say.
-- Broader Socket.IO live-sync beyond scan status is the main thing still open post-1.0.
+The three gaps this README used to list — the oversized upfront bundle, series ordering that
+depended on running the converter, and live sync that stopped at scan status — are all closed.
+What each one turned out to involve is written up in
+[`docs/GAP-CLOSURE-PLAN.md`](docs/GAP-CLOSURE-PLAN.md).
+
+What's still true:
+
+- **Playback does not survive a page reload.** The session lives in memory, so a refresh drops the player. Progress is safe and a "Continue listening?" prompt offers one tap to pick the book back up — but it is a prompt, not a resumption.
+- **No offline listening.** Downloads, an audio cache and reconciliation on reconnect are a phase of their own; the player's track handling is kept storage-agnostic so it stays possible. Post-1.0.
+- **Mobile web works but isn't the target.** Athenaeum is a desktop/tablet browser app: mobile isn't broken, but there's no PWA install, no background audio, and no expanded mobile Now Playing. Phones are meant to use the official app or a compatible client, which this server still serves.
+- **Access tokens appear in stream URLs.** An `<audio>` element cannot send headers, so the token goes in the query string — the mechanism the server provides and what the upstream client does. See [Playback](#playback).
 
 ## License
 

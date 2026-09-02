@@ -59,6 +59,17 @@ const JUMP_FORWARD_STORAGE_KEY = 'voxsilo.jumpForwardAmount'
  */
 export const ACTIVE_ITEM_STORAGE_KEY = 'voxsilo.activeItemId'
 
+/**
+ * Sessions this tab closed itself.
+ *
+ * `close()` POSTs `/session/:id/close`, and the server echoes
+ * `user_session_closed` back to every client of that user — including this
+ * one. That echo can land while `close()` is still awaiting its final sync,
+ * so the socket layer needs a way to tell "I closed this" from "something
+ * else closed this on me". Ids are recorded on the way out and consumed once.
+ */
+const locallyClosedSessions = new Set<string>()
+
 function readStoredItemId(): string | null {
   try {
     return localStorage.getItem(ACTIVE_ITEM_STORAGE_KEY)
@@ -157,6 +168,11 @@ interface PlayerState {
   cancelSleepTimer: () => void
   dismissUpNext: () => void
   close: () => Promise<void>
+  /**
+   * Applies the server's `user_session_closed`. Returns true when it actually
+   * stopped this tab's playback, so the caller can decide whether to say so.
+   */
+  handleSessionClosedRemotely: (sessionId: string) => boolean
 }
 
 export const usePlayerStore = create<PlayerState>((set, get) => {
@@ -522,6 +538,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 
     async close() {
       const element = getAudio()
+      const closingId = get().session?.id
+      // Recorded before the await: the server's echo of this close can arrive
+      // while sync(true) is still in flight.
+      if (closingId) locallyClosedSessions.add(closingId)
       element.pause()
       stopSyncTimer()
       stopSleepTimer()
@@ -534,6 +554,27 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
         // Ignore — see setItem above.
       }
       set({ session: null, item: null, isPlaying: false, currentTime: 0, duration: 0, error: null, resumeItemId: null, sleepTimerMode: null, sleepTimerSecondsRemaining: null, upNext: null })
+    },
+
+    handleSessionClosedRemotely(sessionId) {
+      // Our own close, echoed back — already handled by close() itself.
+      if (locallyClosedSessions.delete(sessionId)) return false
+
+      const { session, item } = get()
+      if (!session || session.id !== sessionId) return false
+
+      // The session no longer exists server-side, so every further sync would
+      // fail and the position would stop being recorded. Stop cleanly and fall
+      // back to the same "Continue listening?" prompt a reload produces, rather
+      // than leaving audio playing against a dead session.
+      const element = getAudio()
+      element.pause()
+      stopSyncTimer()
+      stopSleepTimer()
+      element.removeAttribute('src')
+      element.load()
+      set({ session: null, isPlaying: false, currentTime: 0, duration: 0, sleepTimerMode: null, sleepTimerSecondsRemaining: null, upNext: null, resumeItemId: item?.id ?? null, item: null })
+      return true
     }
   }
 })

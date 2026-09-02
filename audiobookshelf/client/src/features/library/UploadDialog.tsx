@@ -21,6 +21,7 @@ export function UploadDialog() {
   const [title, setTitle] = useState('')
   const [author, setAuthor] = useState('')
   const [series, setSeries] = useState('')
+  const [sequence, setSequence] = useState('')
   const [folderId, setFolderId] = useState<string>('')
   const [files, setFiles] = useState<File[]>([])
 
@@ -32,6 +33,7 @@ export function UploadDialog() {
     setTitle('')
     setAuthor('')
     setSeries('')
+    setSequence('')
     setFolderId('')
     setFiles([])
   }
@@ -40,8 +42,14 @@ export function UploadDialog() {
     e.preventDefault()
     if (!library || !activeFolderId || !title.trim() || files.length === 0) return
     try {
-      await upload.mutateAsync({ libraryId: library.id, folderId: activeFolderId, title: title.trim(), author: author.trim() || undefined, series: series.trim() || undefined, files })
-      toast.success('Uploaded — it will appear once the library picks up the new files')
+      const result = await upload.mutateAsync({ libraryId: library.id, folderId: activeFolderId, title: title.trim(), author: author.trim() || undefined, series: series.trim() || undefined, sequence: sequence.trim() || undefined, files })
+      if (result.sequenceApplied === false) {
+        // The upload itself succeeded; only the position write timed out. Say
+        // so plainly and point at the editor that fixes it.
+        toast.warning('Uploaded, but the series position was not set', { description: 'The scan took longer than expected. Set the order from the series page.' })
+      } else {
+        toast.success(result.sequenceApplied ? 'Uploaded and placed in the series' : 'Uploaded — it will appear once the library picks up the new files')
+      }
       reset()
       setOpen(false)
     } catch (error) {
@@ -83,7 +91,22 @@ export function UploadDialog() {
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="upload-series">Series (optional)</Label>
-              <Input id="upload-series" value={series} onChange={(e) => setSeries(e.target.value)} placeholder="e.g. The Dark Tower" disabled={upload.isPending} />
+              <div className="flex gap-2">
+                <Input id="upload-series" value={series} onChange={(e) => setSeries(e.target.value)} placeholder="e.g. The Dark Tower" disabled={upload.isPending} className="flex-1" />
+                {/* The upload endpoint only uses `series` as a folder name and
+                    stores no position, so a book uploaded without this sorts
+                    arbitrarily within its series. Written after the scan. */}
+                <Input
+                  id="upload-sequence"
+                  value={sequence}
+                  onChange={(e) => setSequence(e.target.value)}
+                  placeholder="#"
+                  aria-label="Position in series"
+                  title="Position in series, e.g. 2"
+                  disabled={upload.isPending || !series.trim()}
+                  className="w-16"
+                />
+              </div>
             </div>
             {(library?.folders.length ?? 0) > 1 && (
               <div className="space-y-1.5">

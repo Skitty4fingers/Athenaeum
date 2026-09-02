@@ -31,7 +31,7 @@ export function AuthorPage() {
     return map
   }, [user?.mediaProgress])
 
-  const books = author?.libraryItems ?? []
+  const books = useMemo(() => author?.libraryItems ?? [], [author?.libraryItems])
   const totalDuration = useMemo(() => books.reduce((sum, item) => sum + ((item.media as BookMediaMinified).duration ?? 0), 0), [books])
 
   return (

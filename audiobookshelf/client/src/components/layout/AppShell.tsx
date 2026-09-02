@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, Outlet, useLocation } from 'react-router-dom'
 import { Suspense } from 'react'
-import { BarChart3, DatabaseBackup, HelpCircle, LogOut, Menu, Search, Settings, User as UserIcon, Users } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import { Activity, BarChart3, DatabaseBackup, HelpCircle, LogOut, Menu, Search, Settings, User as UserIcon, Users } from 'lucide-react'
 import { useTheme } from 'next-themes'
 
 import { Button } from '@/components/ui/button'
@@ -16,6 +17,7 @@ import { PlayerBar } from '@/features/player/PlayerBar'
 import { ResumePrompt } from '@/features/player/ResumePrompt'
 import { usePlayerStore } from '@/stores/player'
 import { useAuthStore } from '@/stores/auth'
+import { installSocketSync } from '@/lib/socket-sync'
 
 /** Opens the global palette by synthesising the same shortcut it listens for. */
 function openCommandPalette() {
@@ -25,6 +27,13 @@ function openCommandPalette() {
 export function AppShell() {
   const user = useAuthStore((s) => s.user)
   const logout = useAuthStore((s) => s.logout)
+  const queryClient = useQueryClient()
+
+  // Live sync for the whole authenticated session. AppShell is the layout for
+  // every signed-in route, so this mounts once and survives navigation —
+  // subscribing per-page would drop events whenever the user moved.
+  useEffect(() => installSocketSync(queryClient), [queryClient])
+
   const { theme, setTheme } = useTheme()
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   // NowPlayingPage is a full-screen route, not a Radix dialog, so nothing
@@ -99,6 +108,13 @@ export function AppShell() {
                   <DropdownMenuItem asChild>
                     <Link to="/users">
                       <Users className="size-4" /> User management
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+                {isAdmin && (
+                  <DropdownMenuItem asChild>
+                    <Link to="/activity">
+                      <Activity className="size-4" /> Activity
                     </Link>
                   </DropdownMenuItem>
                 )}

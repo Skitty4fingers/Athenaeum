@@ -416,3 +416,77 @@ export interface LogEntry {
   levelName: string
   level: number
 }
+
+
+/**
+ * Admin telemetry shapes.
+ *
+ * All of this is data the server already keeps and already exposes to admins —
+ * `GET /api/users/online`, `GET /api/sessions` — plus the `user_online` /
+ * `user_offline` / `user_stream_update` socket events, which `SocketAuthority`
+ * emits with `adminEmitter` so they never reach a non-admin client.
+ */
+
+/** The device that opened a playback session (`PlaybackSession#deviceInfo`). */
+export interface SessionDeviceInfo {
+  id?: string
+  userId?: string
+  deviceId?: string
+  ipAddress?: string | null
+  clientName?: string | null
+  clientVersion?: string | null
+  osName?: string | null
+  osVersion?: string | null
+  browserName?: string | null
+}
+
+/** An in-flight playback session, as the admin endpoints report it. */
+export interface OpenPlaybackSession {
+  id: string
+  userId: string
+  libraryItemId: string
+  displayTitle: string | null
+  displayAuthor: string | null
+  coverPath: string | null
+  /** Position within the book, in seconds. */
+  currentTime: number
+  duration: number
+  /** Seconds actually listened during this session — not the same as position. */
+  timeListening: number
+  mediaPlayer: string | null
+  playMethod: number | null
+  deviceInfo: SessionDeviceInfo | null
+  startedAt: number
+  updatedAt: number
+}
+
+/** A user with at least one live socket connection (`User#toJSONForPublic`). */
+export interface OnlineUser {
+  id: string
+  username: string
+  type: string
+  /** Open socket connections for this user — browser tabs, not playback streams. */
+  connections: number
+  lastSeen: number | null
+  createdAt: number
+  /** The first open playback session for this user, if any. */
+  session: OpenPlaybackSession | null
+}
+
+export interface OnlineUsersResponse {
+  usersOnline: OnlineUser[]
+  openSessions: OpenPlaybackSession[]
+}
+
+/** A historical session row from `GET /api/sessions` (admin), which joins the user. */
+export interface SessionWithUser extends OpenPlaybackSession {
+  user: { id: string; username: string } | null
+}
+
+export interface SessionsPage {
+  total: number
+  numPages: number
+  page: number
+  itemsPerPage: number
+  sessions: SessionWithUser[]
+}

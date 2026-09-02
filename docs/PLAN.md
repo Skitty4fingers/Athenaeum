@@ -48,8 +48,8 @@ If VoxSilo ever needs data the API doesn't expose, add a sidecar service (as
 | --- | --- |
 | App code | ~12,700 lines across 12 feature modules — Phases 0 through 4 all complete |
 | Working | Everything in the README's Status section — auth, browse/filter/search, series, author pages, item detail, metadata enrichment/editing, cover/chapter editing, full player (sleep timer, up-next, bookmarks, resume-after-reload), collections/playlists with drag-to-reorder, multi-select batch actions, upload, listening stats, household user management, library settings, backups/logs |
-| Bundle | route chunks 2–30 kB each, vendor ~745 kB, code-split |
-| Tests | Vitest unit tests (34, over filter encoding/formatting/player track mapping) + one Playwright e2e pass (sign-in → browse → play) |
+| Bundle | route chunks 2–45 kB each; upfront JS is entry ~370 kB + react-core ~233 kB (~188 kB gzipped total), down from ~820 kB / 258 kB gzipped after dropping the blanket vendor chunk and framer-motion (see docs/GAP-CLOSURE-PLAN.md lane A). `ANALYZE=1 npm run build` writes a treemap. |
+| Tests | Vitest unit tests (79, over filter encoding/formatting/player track mapping, the socket-sync event table, series-order health and the series-sequence merge) + 8 Playwright e2e tests (sign-in → browse → play, live sync, series reordering, admin activity). ESLint is wired up and passes with 0 errors; 19 warnings are React-Compiler diagnostics tracked as debt. |
 | Real library | 175 items scanned from `C:/Users/Scott/Libation/Books` (172 real books) + a 3-book test fixture, both as folders on the one library |
 
 ---
@@ -115,9 +115,56 @@ for adding a library, scanning, editing an item, or managing users.
   handshake (see server/SocketAuthority.js). Caught a real bug while building this: the first
   `io()` argument is the *origin* to connect to, not a path prefix — passing `basePath` there made
   socket.io-client treat `/audiobookshelf` as a namespace and silently never open a real connection.
-  `path` is where the base path actually belongs. Currently wired to `task_started`/`task_finished`
-  for scan status; the other ~28 events (`item_updated`, `series_updated`, ...) aren't subscribed to
-  yet — cross-client live sync beyond scanning is still open.
+  `path` is where the base path actually belongs.
+
+- [x] **Series order: prevent it going wrong at import** — done
+  `scripts/libation-to-abs.mjs --watch [--interval=<s>]` converts sidecars as Libation writes them
+  (polling, not `fs.watch`, which is unreliable on network shares; still dependency-free; a failed
+  pass is logged and the watch continues; `--force` is refused with `--watch`). And the in-app
+  upload: `POST /upload` uses `series` only as a folder name and stores no position, so uploaded
+  books landed with `sequence: null` — verified against a running server. The dialog now takes an
+  optional position and the hook waits for the scan, finds the item and PATCHes it on, saying so
+  plainly if the scan outran the wait.
+
+- [x] **Series order: detect and repair in-app** — done
+  `src/lib/series.ts` (pure, unit-tested) flags missing or duplicated sequences; `SeriesPage`
+  states the problem and offers `SeriesOrderDialog`, a drag-to-reorder editor writing 1..N through
+  `POST /items/batch/update`. The editor must re-read each book's full series list from the
+  expanded item endpoint before writing: under `filter=series.<id>` the server attaches only the
+  filtered series, and `updateSeriesFromRequest` replaces the list wholesale, so writing from list
+  data deletes a book's other series memberships — confirmed by doing it against a real server and
+  watching a second series vanish. `e2e/series-order.spec.ts` locks that property down.
+
+- [x] **Admin activity page** — done
+  `/activity` (account menu, admins only): users online and their open socket connections, what
+  each person is listening to with position and per-session listening time, the device that opened
+  each stream, last-seen for every user, and recent session history. Built entirely from existing
+  admin endpoints (`/users/online`, `/users`, `/sessions`) — no new route, nothing newly recorded,
+  server untouched. Live via the admin-only `user_online` / `user_offline` / `user_stream_update`
+  events, with a 20s poll backstopping the position, which advances with no event of its own.
+  One server quirk worked around client-side: `closeSession` emits `user_stream_update` *before*
+  removing the session, so a refetch racing that event still sees the stream it announces the end
+  of — a single short follow-up invalidation settles it.
+
+- [x] **Live sync, Tiers 1 and 2** — done
+  `src/lib/socket-sync.ts` — a declarative event → query-key table (`keysForEvent`, pure and
+  unit-tested) installed once from `AppShell`, covering item add/update/remove (single and batch),
+  library add/update/remove, `task_finished`, `user_item_progress_updated` and `user_updated`.
+  Invalidations coalesce on a 300 ms window measured from the *first* pending event, not reset per
+  event — a resetting debounce would starve during a scan's burst and never flush. Two things are
+  patched into Zustand rather than invalidated, because no query mirrors them: `user.mediaProgress`
+  (what the sidebar count, Continue Listening and grid progress bars read) and the user record
+  itself. Progress events from this tab's *own* playback session skip invalidation — the player
+  syncs every 15s and the server echoes it back, so without that guard the grid refetched twice a
+  minute during playback (measured: 2 refetches per 40s with the guard removed, 0 with it).
+  Tier 2 adds collections, playlists, authors (including the scanner's batched
+  `authors_num_books_updated`) and series, plus `user_session_closed` — which needs real logic, not
+  an invalidation: the server echoes our own close back to us mid-`close()`, so the player store
+  records ids it is closing and consumes them once, and a genuinely remote close pauses, drops the
+  dead session and falls back to the "Continue listening?" prompt.
+  `episode_*`, `rss_feed_*`, `metadata_embed_queue_update`, `backup_applied` and `stream_reset`
+  stay unsubscribed — those features are out of scope (the last is HLS-only and this client never
+  opens an HLS stream), so listening would only cost refetches for surfaces that don't exist.
 
 - [x] **Library settings and scanning** — done
   `/settings`, admin-gated, linked from the account menu. Folders (add/remove, with a destructive-
