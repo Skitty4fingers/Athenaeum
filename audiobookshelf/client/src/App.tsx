@@ -16,6 +16,7 @@ const ItemPage = lazy(() => import('@/features/item/ItemPage').then((m) => ({ de
 const SeriesPage = lazy(() => import('@/features/series/SeriesPage').then((m) => ({ default: m.SeriesPage })))
 const LibrarySettingsPage = lazy(() => import('@/features/settings/LibrarySettingsPage').then((m) => ({ default: m.LibrarySettingsPage })))
 const UsersPage = lazy(() => import('@/features/settings/UsersPage').then((m) => ({ default: m.UsersPage })))
+const ActivityPage = lazy(() => import('@/features/settings/ActivityPage').then((m) => ({ default: m.ActivityPage })))
 const AccountSettingsPage = lazy(() => import('@/features/settings/AccountSettingsPage').then((m) => ({ default: m.AccountSettingsPage })))
 const AuthorPage = lazy(() => import('@/features/author/AuthorPage').then((m) => ({ default: m.AuthorPage })))
 const CollectionsPage = lazy(() => import('@/features/collections/CollectionsPage').then((m) => ({ default: m.CollectionsPage })))
@@ -98,6 +99,7 @@ export default function App() {
           <Route path="/help" element={<HelpPage />} />
           <Route path="/settings" element={<LibrarySettingsPage />} />
           <Route path="/users" element={<UsersPage />} />
+          <Route path="/activity" element={<ActivityPage />} />
           <Route path="/account" element={<AccountSettingsPage />} />
           <Route path="/now-playing" element={<NowPlayingPage />} />
         </Route>

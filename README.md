@@ -59,6 +59,7 @@ The payoff: the Docker image, your existing library, your listening history, and
 - 🔢 **Series order you can actually fix** — a series page flags books with a missing or duplicated position and opens a drag-to-reorder editor, so a set that scanned in the wrong order is repaired in the UI instead of by hand-editing metadata files
 - 🔄 **Live sync** — edit metadata in another browser, or listen on your phone, and open pages update over Socket.IO without a reload; a session closed elsewhere stops playback here instead of silently desyncing
 - 🛠️ **A real admin surface** — library settings, user management, backups & logs, scan status — all in the UI, no `ssh` or `curl` required
+- 📡 **Activity at a glance** — an admin page showing who is connected and on how many devices, what each person is listening to right now and how far in, when everyone was last seen, and what has been played recently; it updates live as people connect and start or stop listening
 - 📊 **Listening stats** — total time, a 14-day activity chart, day-of-week breakdown, and recent sessions
 - 📱 **Mobile-app onboarding** — a Help page with your server's live connection details and links to every compatible client
 - 🏷️ **Runtime branding** — "Athenaeum" isn't load-bearing; rename the app from Settings → System with no rebuild
@@ -286,6 +287,23 @@ seconds and the server echoes that back to the sender, so without the guard the 
 twice a minute during playback. Podcast, RSS, metadata-embed and backup events are not subscribed
 (out of scope), and neither is `stream_reset`, which only concerns HLS — this client plays files
 directly.
+
+### Admin activity
+
+The activity page (account menu → Activity, admins only) reports server state,
+not anything the client records. Every figure already existed:
+
+| Shown | Source |
+| --- | --- |
+| Users online, open connections | `GET /api/users/online` — `SocketAuthority` counts live sockets per user, so "connections" is browser tabs and apps, not streams |
+| Listening now, position, session time, device | the same call's `openSessions` — the playback sessions the server holds in memory, each carrying its `deviceInfo` |
+| Last seen, joined | the `lastSeen` and `createdAt` the server already keeps on every user |
+| Recent sessions | `GET /api/sessions`, the session history table, joined to its user |
+
+No endpoint was added and nothing new is recorded. It stays current from the
+`user_online` / `user_offline` / `user_stream_update` events, which the server
+sends only to admin clients, with a slow poll as a backstop for the parts no
+event announces — a session's position advances every 15 s without one.
 
 ### Metadata enrichment
 

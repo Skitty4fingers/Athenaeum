@@ -21,7 +21,9 @@ import type { MediaProgress } from '@/types/abs'
  *
  * Scope is docs/GAP-CLOSURE-PLAN.md lane B, Tiers 1 and 2: items, libraries,
  * the current user's progress/account, collections, playlists, authors, series
- * and playback sessions.
+ * and playback sessions — plus the admin presence events behind the activity
+ * page (`user_online`, `user_offline`, `user_stream_update`), which the server
+ * sends only to admin clients, so those handlers are inert for everyone else.
  *
  * Deliberately not subscribed: podcast (`episode_*`), RSS (`rss_feed_*`),
  * metadata-embed and backup events, because those features are out of scope
@@ -67,7 +69,12 @@ export const SYNCED_EVENTS = [
   'series_added',
   'series_updated',
   'series_removed',
-  'user_session_closed'
+  'user_session_closed',
+  // Admin presence/telemetry. SocketAuthority sends these with `adminEmitter`,
+  // so a non-admin client simply never receives them and the handler is inert.
+  'user_online',
+  'user_offline',
+  'user_stream_update'
 ] as const
 
 interface ItemLike {
@@ -205,6 +212,14 @@ export function keysForEvent(event: string, payload: unknown): QueryKey[] {
     case 'series_removed':
       return [['library-series'], ['series-books'], ['library-filterdata']]
 
+    // Presence and live-stream changes, for the admin activity page.
+    // `user_stream_update` also fires as a session's position is synced, which
+    // is what keeps "listening now" honest without polling hard.
+    case 'user_online':
+    case 'user_offline':
+    case 'user_stream_update':
+      return [['users-online'], ['recent-sessions'], ['users']]
+
     // Handled by the player store — see the handler in `installSocketSync`.
     case 'user_session_closed':
       return []
@@ -244,6 +259,17 @@ function isOwnPlaybackSession(payload: unknown): boolean {
   const sessionId = asString((payload as ProgressPayload | undefined)?.sessionId)
   return !!sessionId && usePlayerStore.getState().session?.id === sessionId
 }
+
+/**
+ * How long after a `user_stream_update` to re-check presence.
+ *
+ * `PlaybackSessionManager#closeSession` emits the event *before* it removes the
+ * session from its in-memory list, so a refetch racing that event can still see
+ * the stream it is announcing the end of. One short follow-up settles it,
+ * instead of leaving a finished stream on the admin's screen until the next
+ * poll. Server ordering is not ours to change.
+ */
+const STREAM_SETTLE_MS = 1_500
 
 interface Coalescer {
   add: (keys: QueryKey[]) => void
@@ -286,6 +312,7 @@ function createCoalescer(queryClient: QueryClient): Coalescer {
 export function installSocketSync(queryClient: QueryClient): () => void {
   const socket = getSocket()
   const coalescer = createCoalescer(queryClient)
+  const settleTimers = new Set<ReturnType<typeof setTimeout>>()
 
   const handlers = SYNCED_EVENTS.map((event) => {
     const handler = (payload: unknown) => {
@@ -311,6 +338,15 @@ export function installSocketSync(queryClient: QueryClient): () => void {
       }
 
       coalescer.add(keysForEvent(event, payload))
+
+      if (event === 'user_stream_update') {
+        // See STREAM_SETTLE_MS: the close case announces itself a moment early.
+        const timer = setTimeout(() => {
+          settleTimers.delete(timer)
+          coalescer.add([['users-online']])
+        }, STREAM_SETTLE_MS)
+        settleTimers.add(timer)
+      }
     }
 
     socket.on(event, handler)
@@ -319,6 +355,8 @@ export function installSocketSync(queryClient: QueryClient): () => void {
 
   return () => {
     for (const [event, handler] of handlers) socket.off(event, handler)
+    for (const timer of settleTimers) clearTimeout(timer)
+    settleTimers.clear()
     coalescer.dispose()
   }
 }

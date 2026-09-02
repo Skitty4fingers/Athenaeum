@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, Outlet, useLocation } from 'react-router-dom'
 import { Suspense } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { BarChart3, DatabaseBackup, HelpCircle, LogOut, Menu, Search, Settings, User as UserIcon, Users } from 'lucide-react'
+import { Activity, BarChart3, DatabaseBackup, HelpCircle, LogOut, Menu, Search, Settings, User as UserIcon, Users } from 'lucide-react'
 import { useTheme } from 'next-themes'
 
 import { Button } from '@/components/ui/button'
@@ -108,6 +108,13 @@ export function AppShell() {
                   <DropdownMenuItem asChild>
                     <Link to="/users">
                       <Users className="size-4" /> User management
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+                {isAdmin && (
+                  <DropdownMenuItem asChild>
+                    <Link to="/activity">
+                      <Activity className="size-4" /> Activity
                     </Link>
                   </DropdownMenuItem>
                 )}

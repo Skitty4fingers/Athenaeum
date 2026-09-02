@@ -15,9 +15,11 @@ import type { User } from '@/types/abs'
  *   single-library, so every user implicitly has access to the one library.
  */
 
-export function useUsers() {
+/** `enabled` lets a caller hold off for a non-admin, where `/users` would 403. */
+export function useUsers(enabled = true) {
   return useQuery({
     queryKey: ['users'],
+    enabled,
     queryFn: () => api.get<{ users: User[] }>('/users'),
     select: (data) => data.users,
     staleTime: 30_000

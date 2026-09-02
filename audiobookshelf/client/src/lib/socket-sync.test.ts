@@ -166,6 +166,16 @@ describe('keysForEvent', () => {
     })
   })
 
+  describe('admin presence', () => {
+    it('stales the activity page queries on connect, disconnect and stream changes', () => {
+      for (const event of ['user_online', 'user_offline', 'user_stream_update']) {
+        expect(has(event, { id: 'u_1', username: 'someone', connections: 2 }, ['users-online'])).toBe(true)
+        expect(has(event, { id: 'u_1' }, ['recent-sessions'])).toBe(true)
+        expect(has(event, { id: 'u_1' }, ['users'])).toBe(true)
+      }
+    })
+  })
+
   it('maps user_session_closed to no queries — the player store handles it', () => {
     // Payload is the bare session id string, not an object.
     expect(keysForEvent('user_session_closed', 'sess_1')).toEqual([])

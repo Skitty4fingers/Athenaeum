@@ -183,7 +183,13 @@ test.describe('live sync', () => {
     expect(progressed, 'no playback progress reached the server, so no heartbeats fired').toBe(true)
     expect(refetches, 'own playback heartbeats should not refetch the library grid').toBe(0)
 
-    await page.getByRole('button', { name: 'Close player' }).click().catch(() => {})
+    // Cleanup, not an assertion — and the player may already be gone: the
+    // fixture book can run out during the 40s wait, which closes the bar. A
+    // bare click() would block on actionability until the test times out.
+    await page
+      .getByRole('button', { name: 'Close player' })
+      .click({ timeout: 5_000 })
+      .catch(() => {})
   })
 
   test('a collection created, renamed and deleted elsewhere tracks on an open list', async ({ page }) => {

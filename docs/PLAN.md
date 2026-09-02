@@ -49,7 +49,7 @@ If VoxSilo ever needs data the API doesn't expose, add a sidecar service (as
 | App code | ~12,700 lines across 12 feature modules — Phases 0 through 4 all complete |
 | Working | Everything in the README's Status section — auth, browse/filter/search, series, author pages, item detail, metadata enrichment/editing, cover/chapter editing, full player (sleep timer, up-next, bookmarks, resume-after-reload), collections/playlists with drag-to-reorder, multi-select batch actions, upload, listening stats, household user management, library settings, backups/logs |
 | Bundle | route chunks 2–45 kB each; upfront JS is entry ~370 kB + react-core ~233 kB (~188 kB gzipped total), down from ~820 kB / 258 kB gzipped after dropping the blanket vendor chunk and framer-motion (see docs/GAP-CLOSURE-PLAN.md lane A). `ANALYZE=1 npm run build` writes a treemap. |
-| Tests | Vitest unit tests (78, over filter encoding/formatting/player track mapping, the socket-sync event table, series-order health and the series-sequence merge) + 7 Playwright e2e tests (sign-in → browse → play, live sync, series reordering). ESLint is wired up and passes with 0 errors; 19 warnings are React-Compiler diagnostics tracked as debt. |
+| Tests | Vitest unit tests (79, over filter encoding/formatting/player track mapping, the socket-sync event table, series-order health and the series-sequence merge) + 8 Playwright e2e tests (sign-in → browse → play, live sync, series reordering, admin activity). ESLint is wired up and passes with 0 errors; 19 warnings are React-Compiler diagnostics tracked as debt. |
 | Real library | 175 items scanned from `C:/Users/Scott/Libation/Books` (172 real books) + a 3-book test fixture, both as folders on the one library |
 
 ---
@@ -134,6 +134,17 @@ for adding a library, scanning, editing an item, or managing users.
   filtered series, and `updateSeriesFromRequest` replaces the list wholesale, so writing from list
   data deletes a book's other series memberships — confirmed by doing it against a real server and
   watching a second series vanish. `e2e/series-order.spec.ts` locks that property down.
+
+- [x] **Admin activity page** — done
+  `/activity` (account menu, admins only): users online and their open socket connections, what
+  each person is listening to with position and per-session listening time, the device that opened
+  each stream, last-seen for every user, and recent session history. Built entirely from existing
+  admin endpoints (`/users/online`, `/users`, `/sessions`) — no new route, nothing newly recorded,
+  server untouched. Live via the admin-only `user_online` / `user_offline` / `user_stream_update`
+  events, with a 20s poll backstopping the position, which advances with no event of its own.
+  One server quirk worked around client-side: `closeSession` emits `user_stream_update` *before*
+  removing the session, so a refetch racing that event still sees the stream it announces the end
+  of — a single short follow-up invalidation settles it.
 
 - [x] **Live sync, Tiers 1 and 2** — done
   `src/lib/socket-sync.ts` — a declarative event → query-key table (`keysForEvent`, pure and
