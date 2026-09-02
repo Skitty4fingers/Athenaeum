@@ -790,6 +790,27 @@ Phase 4 is now complete. VoxSilo's roadmap through 1.0 is done.
   deployment path, not just a build that happens to succeed. Documented the build/run commands and
   what was verified in a new README "Docker" subsection under Building.
 
+- **2026-09-02 — Resume prompt shows real saved progress instead of just a title.** User asked to work
+  three README "Known gaps" items. Researched first rather than assuming: confirmed via
+  `PlaybackSessionManager.startSession` (server) that `POST /items/:id/play` has real side effects —
+  closes the device's other open sessions, creates a Device record, emits `user_stream_update` to admin
+  sockets, and can spawn an ffmpeg transcode — so it cannot fire silently on every page load just to
+  pre-load audio for gap #1 ("playback doesn't survive reload"), which is what the originally-approved
+  framing ("load track, restore position, stay paused") would have required. Also confirmed
+  reconstructing track URLs client-side from the plain item endpoint isn't reliable: `startOffset` and
+  `contentUrl` are computed fresh every time from `getTracklist()`, not stored, so a client-side copy of
+  that logic would silently drift if the server's ordering/exclusion rules ever changed. Told the user
+  this before writing anything, then built the honest version instead: `ResumePrompt.tsx` now reads
+  `user.mediaProgress` (already in memory from login, no extra fetch) to show the actual saved position
+  — a thin progress bar plus "`{X} left`" — so the prompt shows where you'll land before you tap, rather
+  than just a title; the Resume button also shows a spinner while the (unavoidable) `/play` round trip
+  is in flight, so the tap reads as acknowledged rather than inert. The tap-to-resume mechanism itself
+  is otherwise unchanged — it was already a single round trip immediately followed by autoplay, i.e.
+  already close to as fast as this can get without the disallowed silent pre-load. Verified live: real
+  saved progress ("4% · 42m left") rendered correctly on reload without any new network request: paused
+  reload → prompt showed progress from existing store state → tapped Resume → spinner → played →
+  paused/closed cleanly.
+
 ## Post-1.0 bug fixes
 
 - **2026-08-31 — Sidebar was silently truncating Series, Genres, Authors, and Narrators to 20

@@ -374,7 +374,7 @@ Use `bg-playing` / `text-playing` for anything that means "this is being listene
 
 ## Known gaps
 
-- **Playback does not survive a page reload.** The session lives in memory, so a refresh drops the player. Progress is safe and a "Continue listening?" prompt offers one tap to pick the book back up — but it is a prompt, not a resumption.
+- **Playback does not survive a page reload.** The session lives in memory, so a refresh drops the player. Progress is safe and a "Continue listening?" prompt — showing the real saved position, not just a title — offers one tap to pick the book back up. It stays a prompt rather than a silent resumption on purpose: starting real playback means calling the server's `/play` endpoint, which has side effects (closes the device's other sessions, shows up in admin activity), so it can't fire automatically just because a tab reloaded.
 - **No offline listening.** Downloads, an audio cache and reconciliation on reconnect are a phase of their own; the player's track handling is kept storage-agnostic so it stays possible. Post-1.0.
 - **Mobile web works but isn't the target.** Athenaeum is a desktop/tablet browser app: mobile isn't broken, but there's no PWA install, no background audio, and no expanded mobile Now Playing. Phones are meant to use the official app or a compatible client, which this server still serves.
 - **Access tokens appear in stream URLs.** An `<audio>` element cannot send headers, so the token goes in the query string — the mechanism the server provides and what the upstream client does. See [Playback](#playback).
