@@ -1,0 +1,35 @@
+name: Local Deploy (act only)
+
+# NOT meant to run on GitHub's hosted runners — there's no real Docker host or
+# audiobook library there. `workflow_dispatch` (rather than `push`) is
+# deliberate: GitHub itself never auto-fires this. It only runs when
+# scripts/github-webhook-receiver.mjs invokes `act workflow_dispatch` locally,
+# itself triggered by a GitHub webhook on a real push to main. See the
+# README's "Local auto-deploy" section. CONFIG_DIR/METADATA_DIR/
+# AUDIOBOOKS_DIR/AUDIOBOOKS2_DIR come from the operator's local, gitignored
+# .act.local.env (act injects them as real process env vars) — this file
+# intentionally carries no machine-specific paths.
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        # act mounts the host's own Docker socket, so this builds a real
+        # image on the host Docker Desktop, not a nested/throwaway one.
+        run: docker build -t athenaeum:local -f audiobookshelf/Dockerfile audiobookshelf
+
+      - name: Restart container
+        run: |
+          docker rm -f athenaeum 2>/dev/null || true
+          docker run -d --name athenaeum -p 13378:80 \
+            -v "${CONFIG_DIR}:/config" \
+            -v "${METADATA_DIR}:/metadata" \
+            -v "${AUDIOBOOKS_DIR}:/audiobooks" \
+            -v "${AUDIOBOOKS2_DIR}:/audiobooks2" \
+            --restart unless-stopped \
+            athenaeum:local

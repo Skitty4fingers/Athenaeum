@@ -116,6 +116,7 @@ curl -X POST http://localhost:3333/audiobookshelf/init -H "Content-Type: applica
 - [Configuration](#configuration)
 - [Building](#building)
 - [Testing](#testing)
+- [CI/CD](#cicd)
 - [How it works](#how-it-works)
 - [Kibo UI](#kibo-ui)
 - [Design tokens](#design-tokens)
@@ -231,6 +232,39 @@ Playwright tests over sign-in → browse → play, live sync, and series reorder
 Use a disposable account and library, not your own — these start playback, rewrite one book's title and series sequences, and create a collection, restoring what they changed afterwards.
 
 Every spec signs in for real and the server rate-limits authentication (40 attempts per 10 minutes), so repeated full-suite runs start failing with "Too many authentication requests". Start the dev server with `RATE_LIMIT_AUTH_MAX=0` while iterating on them.
+
+## CI/CD
+
+Two independent pipelines — a cloud one for correctness, a local one for actually running the thing.
+
+### GitHub Actions
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml). On every push or PR against `main`: typecheck, unit tests, and a production build — the fast safety net. On an actual push to `main`, once that passes, a second job builds this fork's Docker image and pushes it to GHCR (`ghcr.io/<owner>/<repo>`), tagged `:latest` and with the short commit SHA. No config needed beyond the repo's own built-in `GITHUB_TOKEN`.
+
+### Local auto-deploy
+
+Rebuilds and restarts a real container on *this* machine on every push to `main` — no GitHub-hosted runner has your Docker daemon or your library. The chain:
+
+```
+GitHub push to main
+  → webhook (registered on the repo, HMAC-signed)
+  → https://<your-tailnet-node>.ts.net/webhook  (Tailscale Funnel — public HTTPS, real Let's Encrypt cert)
+  → scripts/github-webhook-receiver.mjs  (a tiny Node HTTP server, verifies the signature)
+  → `act workflow_dispatch -W .github/workflows/local-deploy.yml`  (nektos/act, runs the workflow locally)
+  → docker build + docker run  (act mounts the host's own Docker socket, so this is a real image/container, not a throwaway one)
+```
+
+[`.github/workflows/local-deploy.yml`](.github/workflows/local-deploy.yml) is deliberately `workflow_dispatch`-only — GitHub itself never runs it; only a local `act` invocation does. It reads `CONFIG_DIR`/`METADATA_DIR`/`AUDIOBOOKS_DIR`/`AUDIOBOOKS2_DIR` from the operator's own environment (via act's `--env-file`), so the committed workflow carries no machine-specific paths.
+
+To set this up on your own machine:
+
+1. Install [act](https://github.com/nektos/act) and Tailscale, and enable [Funnel](https://tailscale.com/kb/1223/funnel) for your tailnet.
+2. `tailscale serve --bg 13378` then `tailscale serve --bg --set-path=/webhook 9001` then `tailscale funnel --bg 13378` (Funnel and each serve mount are separate on/off toggles — funnel-ing after adding a mount, not before, is what makes both paths public. On Windows/Git Bash, prefix each with `MSYS_NO_PATHCONV=1` or the leading `/` gets mangled into a filesystem path.)
+3. Create `.act.local.env` and `.webhook-secret` at the repo root (both gitignored) — see [`scripts/github-webhook-receiver.mjs`](scripts/github-webhook-receiver.mjs)'s header comment for the exact shape.
+4. Register the webhook: `gh api repos/<owner>/<repo>/hooks -X POST -f name=web -F active=true -f events[]=push -f config[url]=https://<your-node>.ts.net/webhook -f config[content_type]=json -f config[secret]=<your secret>`.
+5. Run the receiver: `node scripts/github-webhook-receiver.mjs` (logs to stdout and `audiobookshelf/docker-data/local-deploy.log`).
+
+Verified end to end: a real push to `main` reached the receiver over the public Funnel URL, `act` ran `local-deploy.yml` against the host Docker daemon, and the `athenaeum` container was rebuilt and restarted with the real library still correctly mounted.
 
 ## How it works
 

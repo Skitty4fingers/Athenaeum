@@ -21,3 +21,8 @@ desktop.ini
 # Local env / secrets
 .env
 .env.local
+# Local auto-deploy (see README "Local auto-deploy"): the webhook signing
+# secret and the machine-specific paths act injects into local-deploy.yml.
+/.webhook-secret
+/.act.local.env
+/.act-test/
