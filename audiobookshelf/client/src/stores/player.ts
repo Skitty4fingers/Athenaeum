@@ -1,8 +1,10 @@
 import { create } from 'zustand'
-import { api, getAccessToken } from '@/lib/api'
+import { api } from '@/lib/api'
 import { apiPath } from '@/lib/config'
-import { getAppName } from '@/stores/auth'
+import { trackUrl } from '@/lib/track-url'
+import { getAppName, useAuthStore } from '@/stores/auth'
 import { encodeFilter } from '@/lib/filters'
+import { getOfflineItem, hasOfflineCopy, offlineItemToLibraryItem, queueOfflinePendingSync } from '@/lib/offline'
 import type { BookMediaMinified, BookMetadataExpanded, LibraryItemMinified } from '@/types/abs'
 
 /**
@@ -58,6 +60,9 @@ const JUMP_FORWARD_STORAGE_KEY = 'voxsilo.jumpForwardAmount'
  * didn't ask to hear again.
  */
 export const ACTIVE_ITEM_STORAGE_KEY = 'voxsilo.activeItemId'
+
+/** Sentinel session id prefix for a downloaded item played with no server session — see playOffline(). */
+const OFFLINE_SESSION_PREFIX = 'offline:'
 
 /**
  * Sessions this tab closed itself.
@@ -118,17 +123,6 @@ function getAudio(): HTMLAudioElement {
   return audio
 }
 
-/**
- * Track URLs are authenticated, and an <audio> element cannot send headers.
- * The server accepts the access token as a query parameter for exactly this
- * reason (`ExtractJwt.fromUrlQueryParameter('token')` in Auth.js).
- */
-function trackUrl(track: AudioTrack): string {
-  const token = getAccessToken()
-  const path = track.contentUrl.replace(/^\/api/, apiPath)
-  return token ? `${path}${path.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}` : path
-}
-
 interface PlayerState {
   session: PlaybackSession | null
   item: LibraryItemMinified | null
@@ -152,6 +146,8 @@ interface PlayerState {
   upNext: LibraryItemMinified | null
 
   play: (item: LibraryItemMinified) => Promise<void>
+  /** Plays a previously downloaded item with no server session — see the module doc above `OFFLINE_SESSION_PREFIX`. `play()` falls back to this itself when the network is unreachable and an offline copy exists. */
+  playOffline: (itemId: string) => void
   toggle: () => void
   seek: (globalTime: number) => void
   skip: (seconds: number) => void
@@ -183,6 +179,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 
     const timeListened = listenedSinceSync
     listenedSinceSync = 0
+
+    // An offline session (see playOffline below) has no real session id to
+    // sync against — there may be no network at all. Queue it for
+    // flushPendingOfflineSync() to report for real once back online, rather
+    // than losing the listening time or failing loudly.
+    if (session.id.startsWith(OFFLINE_SESSION_PREFIX)) {
+      queueOfflinePendingSync(session.libraryItemId, currentTime, timeListened)
+      return
+    }
 
     try {
       await api.post(`/session/${session.id}/${final ? 'close' : 'sync'}`, {
@@ -420,7 +425,73 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
           // Private browsing or blocked storage — resume-after-reload just won't work.
         }
       } catch (error) {
+        // No network reaches the server, but this book was downloaded for
+        // exactly this situation — fall back rather than surfacing an error
+        // for something the user already prepared for.
+        if (!navigator.onLine && hasOfflineCopy(item.id)) {
+          get().playOffline(item.id)
+          return
+        }
         set({ isLoading: false, error: error instanceof Error ? error.message : 'Could not start playback.' })
+      }
+    },
+
+    playOffline(itemId) {
+      const record = getOfflineItem(itemId)
+      if (!record) {
+        set({ isLoading: false, error: 'This book is not downloaded for offline listening.' })
+        return
+      }
+
+      const current = get()
+      if (current.session?.libraryItemId === itemId) {
+        current.toggle()
+        return
+      }
+      if (current.session) void sync(true)
+
+      stopSleepTimer()
+
+      // Best known position: whatever progress this device (or another one,
+      // synced before going offline) last reported — same source ResumePrompt
+      // reads, not anything specific to this offline session.
+      const progress = useAuthStore.getState().user?.mediaProgress?.find((mp) => mp.libraryItemId === itemId && !mp.episodeId)
+      const currentTime = progress?.currentTime ?? 0
+
+      const session: PlaybackSession = {
+        id: `${OFFLINE_SESSION_PREFIX}${itemId}`,
+        libraryItemId: itemId,
+        displayTitle: record.title,
+        displayAuthor: record.author,
+        duration: record.duration,
+        currentTime,
+        audioTracks: record.tracks,
+        chapters: record.chapters,
+        playMethod: 0
+      }
+
+      listenedSinceSync = 0
+      lastTickAt = null
+      set({
+        session,
+        item: offlineItemToLibraryItem(record),
+        duration: session.duration,
+        currentTime,
+        isPlaying: false,
+        isLoading: false,
+        error: null,
+        sleepTimerMode: null,
+        sleepTimerSecondsRemaining: null,
+        upNext: null
+      })
+
+      attachListeners()
+      const index = trackForTime(currentTime)
+      loadTrack(index, currentTime - session.audioTracks[index].startOffset, true)
+      try {
+        localStorage.setItem(ACTIVE_ITEM_STORAGE_KEY, itemId)
+      } catch {
+        // Private browsing or blocked storage — resume-after-reload just won't work.
       }
     },
 

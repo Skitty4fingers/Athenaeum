@@ -38,6 +38,9 @@
 /libnusqlite3*
 
 sw.*
+# ...except the client's own hand-written offline-playback service worker —
+# source code, not the generated upstream one this pattern originally meant.
+!/client/public/sw.js
 .DS_STORE
 .idea/*
 tailwind.compiled.css

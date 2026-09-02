@@ -29,6 +29,15 @@ const queryClient = new QueryClient({
   }
 })
 
+// Registered at `${basePath}/sw.js` so its default scope covers everything
+// under the app's base path — including the `/api/items/:id/file/:fileId`
+// requests it intercepts for offline playback. See public/sw.js.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    void navigator.serviceWorker.register(`${basePath}/sw.js`)
+  })
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>

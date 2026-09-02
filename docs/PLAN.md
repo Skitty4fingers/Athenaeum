@@ -811,6 +811,43 @@ Phase 4 is now complete. VoxSilo's roadmap through 1.0 is done.
   reload → prompt showed progress from existing store state → tapped Resume → spinner → played →
   paused/closed cleanly.
 
+- **2026-09-02 — Offline listening: download + play with no network, reconciled on reconnect.**
+  Gap #2 from the README, user chose to include reconciliation in this round rather than defer it too.
+  Core mechanism: `client/public/sw.js`, a hand-written (not bundled — Vite copies `public/` verbatim,
+  so it can't `import` from `src/`) service worker that intercepts only
+  `/api/items/:id/file/:fileId` requests, answers from the Cache API when a match exists (including
+  slicing a fully-cached response into a real 206 Partial Content reply for Range requests, since
+  scrubbing depends on that), and otherwise falls straight through to the network — caching itself is
+  opt-in, populated only by an explicit download, never implicitly by this fetch handler. Registered in
+  `main.tsx` at `${basePath}/sw.js` so its default scope covers everything under the app's base path.
+  `lib/offline.ts` owns the download itself and a small localStorage manifest (title/author/tracks/
+  chapters/duration — no IndexedDB, no new dependency, matches how the rest of the app already uses
+  localStorage). Downloading mints a `/play` session (the only way to learn real track
+  `contentUrl`/`startOffset` — see the entry below on gap #1 for why that can't be avoided or
+  reconstructed client-side) and immediately closes it, so a download doesn't linger as a phantom
+  "listening" session in admin activity. `stores/player.ts` gained `playOffline(itemId)`, building a
+  `PlaybackSession`-shaped object straight from the manifest (sentinel id `offline:<itemId>`, no server
+  session) and reusing every bit of existing playback machinery (`attachListeners`, `loadTrack`, the
+  sync timer) unchanged; `play()` falls back to it automatically when `!navigator.onLine` and an
+  offline copy exists, so the existing Play/Resume button on the item page just works offline with no
+  new UI branch there. `sync()` now branches on that sentinel prefix: instead of POSTing to a session
+  that doesn't exist, it queues `{currentTime, timeListened}` into a separate localStorage queue;
+  `flushPendingOfflineSync()` (triggered on the `online` event, and once at boot in case the tab loaded
+  already back online) reports each queued item for real via the same mint-a-session-then-close
+  pattern the download used. Extracted `trackUrl()` out of `player.ts` into `lib/track-url.ts` first —
+  `offline.ts` needs the exact same URL construction so a downloaded track's cache key matches what
+  playback will later request, and the two modules would otherwise import each other.
+  Explicitly out of scope for this slice (said so before starting, not discovered after): a dedicated
+  "Downloads" browsing page (start one from an item page you've visited before instead — the library
+  API itself is unreachable with no connectivity anyway, and full offline *browsing* needs the
+  app-shell caching that's PWA/gap-#3 territory, deliberately not built here), and OS media-session
+  integration for offline sessions (`updateMediaSession` is skipped for the synthetic offline session —
+  lock-screen controls degrade to nothing rather than pointing at a session that isn't really there).
+  Typecheck, `npm test` (79 passed), and a production build all clean before shipping. Live
+  verification is a separate log entry immediately below — this session's browser tool refuses
+  ServiceWorker registration against `localhost`, so it needed the real deployed instance, not the dev
+  server.
+
 ## Post-1.0 bug fixes
 
 - **2026-08-31 — Sidebar was silently truncating Series, Genres, Authors, and Narrators to 20

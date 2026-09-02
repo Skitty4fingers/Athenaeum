@@ -2,13 +2,14 @@ import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { ArrowLeft, BookOpen, CalendarDays, Check, Circle, Clock, ImageIcon, Layers, ListTree, ListVideo, Mic, Pause, Pencil, Play, Sparkles } from 'lucide-react'
+import { ArrowLeft, BookOpen, CalendarDays, Check, Circle, Clock, Download, ImageIcon, Layers, ListTree, ListVideo, Mic, Pause, Pencil, Play, Sparkles, Trash2 } from 'lucide-react'
 
 import { api, coverUrl } from '@/lib/api'
 import { formatBytes, formatDuration } from '@/lib/format'
 import { encodeFilter } from '@/lib/filters'
 import { useAuthStore } from '@/stores/auth'
 import { usePlayerStore } from '@/stores/player'
+import { downloadItem, hasOfflineCopy, removeOfflineItem } from '@/lib/offline'
 import { useMarkFinished, useMarkUnread, useMediaProgressFor } from '@/hooks/use-progress'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -48,6 +49,12 @@ export function ItemPage() {
   const { data: item, isPending, isError } = useItem(itemId)
   const [enrichOpen, setEnrichOpen] = useState(false)
   const [coverOpen, setCoverOpen] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const [downloadProgress, setDownloadProgress] = useState(0)
+  // hasOfflineCopy() reads plain localStorage, not reactive state, so this
+  // is set explicitly after a download/removal completes rather than
+  // recomputed automatically.
+  const [isDownloaded, setIsDownloaded] = useState(() => (itemId ? hasOfflineCopy(itemId) : false))
 
   const user = useAuthStore((s) => s.user)
   const isAdmin = user?.type === 'root' || user?.type === 'admin'
@@ -120,6 +127,30 @@ export function ItemPage() {
     }
   }
 
+  async function onDownload() {
+    setDownloading(true)
+    setDownloadProgress(0)
+    try {
+      await downloadItem(item!, setDownloadProgress)
+      toast.success('Downloaded for offline listening')
+      setIsDownloaded(true)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not download this book')
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  async function onRemoveDownload() {
+    try {
+      await removeOfflineItem(item!.id)
+      toast.success('Download removed')
+      setIsDownloaded(false)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not remove this download')
+    }
+  }
+
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
       <Button asChild variant="ghost" size="sm" className="-ml-2 mb-5 gap-1.5 text-muted-foreground">
@@ -163,6 +194,18 @@ export function ItemPage() {
               {isThisPlaying ? <Pause className="size-4 fill-current" /> : <Play className="size-4 fill-current" />}
               {isThisPlaying ? 'Pause' : hasProgress ? 'Resume' : 'Play'}
             </Button>
+
+            {isDownloaded ? (
+              <Button variant="outline" onClick={() => void onRemoveDownload()} className="w-full gap-1.5">
+                <Trash2 className="size-4" />
+                Remove download
+              </Button>
+            ) : (
+              <Button variant="outline" onClick={() => void onDownload()} disabled={downloading} className="w-full gap-1.5">
+                <Download className="size-4" />
+                {downloading ? `Downloading… ${Math.round(downloadProgress * 100)}%` : 'Download for offline'}
+              </Button>
+            )}
 
             {progress?.isFinished ? (
               <Button variant="outline" onClick={() => void onMarkUnread()} disabled={markUnread.isPending} className="w-full gap-1.5">
