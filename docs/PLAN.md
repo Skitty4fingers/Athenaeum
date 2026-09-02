@@ -868,6 +868,41 @@ Phase 4 is now complete. VoxSilo's roadmap through 1.0 is done.
   worker while offline, which needs a real, unrestricted browser to check by hand: download a book,
   turn off networking, reload, try playing it.
 
+- **2026-09-02 — PWA: installable, with a real offline app shell.** Gap #3 from the README, user chose
+  the "installability + offline app-shell" slice specifically (not background-audio tuning or an
+  expanded mobile Now Playing — explicitly deferred, said so before starting).
+  `public/manifest.json`: name/icons/theme colors/`display: standalone`. Deliberately used `"."` for
+  both `start_url` and `scope` rather than a hardcoded path — manifest `start_url` resolves relative to
+  the *manifest's own URL*, not the page's, so this correctly follows whatever `ROUTER_BASE_PATH` a
+  deployment uses without needing the manifest to be build-time templated. Icons: no image
+  library/tool was available in this environment (no ImageMagick, Inkscape, cairosvg, Pillow, sharp —
+  checked and confirmed absent) — rasterized the existing `favicon.svg` logo to PNG via an actual
+  browser `<canvas>` (loaded the SVG into an `Image`, drew it at each target size, `toDataURL`),
+  pulled the base64 back out, decoded it to real PNG files. Verified each one is a real, correctly-sized
+  image before using it (`file` reports correct dimensions for all four; visually confirmed
+  `icon-192.png` and the maskable variant render the actual logo, not noise) — a maskable icon needs
+  extra padding (drawn at 70% scale on a full-bleed square) so a circular OS crop doesn't clip it.
+  `public/sw.js` extended with two more independent jobs alongside the existing audio-file caching from
+  the offline-listening entry above: navigation requests (a real page load) go network-first with a
+  cached-shell fallback, so a cold load works fully offline once the app has been visited online at
+  least once; static hashed assets (`/assets/*`, favicon, manifest) go cache-first, since a hashed
+  filename never changes meaning within a build. Deliberately did *not* try to precache the exact list
+  of built asset filenames (the standard workbox/vite-plugin-pwa approach) — that needs a build-time
+  manifest-injection step this project has no bundler plugin for; runtime caching (cache what's
+  actually requested, as it's requested) gets the same practical result without that machinery, at the
+  cost of "first real visit populates the cache" rather than "cached the moment the SW installs" — a
+  reasonable tradeoff for a hand-rolled service worker.
+  Did not build a custom "Install" button — Chrome/Edge/Android already show their own install
+  affordance once a page meets the manifest+SW+HTTPS criteria, and iOS Safari has no
+  `beforeinstallprompt` API to hook into at all (that platform's install path is manually "Add to Home
+  Screen" via the share sheet regardless, which the manifest + `apple-touch-icon` already support with
+  no JS needed).
+  Verification: build output confirmed to contain all PWA assets (`manifest.json`, all four PNGs,
+  `sw.js`) under `dist/`; `sw.js` syntax-checked (`node --check`) and `manifest.json` validated as
+  parseable JSON. Deeper live verification (actual installability, a genuine cold offline load) needs
+  the real deployed HTTPS instance for the same reason the offline-listening entry above does — this
+  session's browser tool can't complete a ServiceWorker registration against `localhost` at all.
+
 ## Post-1.0 bug fixes
 
 - **2026-08-31 — Sidebar was silently truncating Series, Genres, Authors, and Narrators to 20
