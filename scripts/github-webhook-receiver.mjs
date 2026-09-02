@@ -68,7 +68,11 @@ function runDeploy() {
 }
 
 const server = createServer((req, res) => {
-  if (req.method !== 'POST' || req.url !== '/webhook') {
+  // Path-agnostic on purpose: this server has exactly one job, and the
+  // reverse proxy in front of it (Tailscale Serve's --set-path mount)
+  // strips the /webhook prefix before forwarding, so the request arrives
+  // here as POST / rather than POST /webhook.
+  if (req.method !== 'POST') {
     res.writeHead(404).end()
     return
   }
