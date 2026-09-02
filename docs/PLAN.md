@@ -843,10 +843,30 @@ Phase 4 is now complete. VoxSilo's roadmap through 1.0 is done.
   app-shell caching that's PWA/gap-#3 territory, deliberately not built here), and OS media-session
   integration for offline sessions (`updateMediaSession` is skipped for the synthetic offline session —
   lock-screen controls degrade to nothing rather than pointing at a session that isn't really there).
-  Typecheck, `npm test` (79 passed), and a production build all clean before shipping. Live
-  verification is a separate log entry immediately below — this session's browser tool refuses
-  ServiceWorker registration against `localhost`, so it needed the real deployed instance, not the dev
-  server.
+  Typecheck, `npm test` (79 passed), and a production build all clean before shipping.
+  Live verification, and what turned out not to be verifiable in this environment: this session's
+  browser tool (Claude Browser MCP) cannot complete a ServiceWorker registration or even a plain
+  `fetch()` at all against either `localhost` or the real public deployment
+  (`https://poseidon.fable-hawksbill.ts.net`, redeployed via the local auto-deploy pipeline for this —
+  `net::ERR_BLOCKED_BY_CLIENT` on every request once it started, confirmed via the browser's own
+  console, i.e. a client-side block in the tool itself, not a server, DNS, or code problem: `curl`
+  reached the exact same URLs fine throughout, and this is the same domain that was serving the app
+  correctly for real users in earlier turns this session). So `<audio>` genuinely being served from the
+  service worker's cache while offline could not be exercised end-to-end here. What *was* verified with
+  real data, live, against the actual dev server: downloaded "A Change of Plans" through the real UI
+  button end-to-end (progress → success toast → button swapped to "Remove download"), then confirmed
+  directly via the Cache API and localStorage — the manifest has the real track/chapter metadata, and
+  the cache holds the complete, correctly-keyed (token stripped) 67,196,201-byte MP3, matching the
+  server's own reported file size exactly, plus the cover image. Separately ran the exact
+  `sliceForRange` function from `public/sw.js` (copied verbatim, not reimplemented) against that real
+  cached file for a mid-file open-ended range (`bytes=1000000-`, the shape a real seek produces): got
+  back a 206 with the correct `Content-Range`/`Content-Length`, and confirmed the returned bytes are
+  byte-for-byte identical to the same slice of the source file. So the two pieces that could be tested
+  without live `fetch` interception — the download/cache/manifest pipeline, and the range-slicing logic
+  precisely as the service worker will run it — are confirmed correct with real data; what remains
+  unverified in this environment specifically is the browser actually routing a request through that
+  worker while offline, which needs a real, unrestricted browser to check by hand: download a book,
+  turn off networking, reload, try playing it.
 
 ## Post-1.0 bug fixes
 
