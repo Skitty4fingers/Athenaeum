@@ -374,13 +374,6 @@ Use `bg-playing` / `text-playing` for anything that means "this is being listene
 
 ## Known gaps
 
-The three gaps this README used to list — the oversized upfront bundle, series ordering that
-depended on running the converter, and live sync that stopped at scan status — are all closed.
-What each one turned out to involve is written up in
-[`docs/GAP-CLOSURE-PLAN.md`](docs/GAP-CLOSURE-PLAN.md).
-
-What's still true:
-
 - **Playback does not survive a page reload.** The session lives in memory, so a refresh drops the player. Progress is safe and a "Continue listening?" prompt offers one tap to pick the book back up — but it is a prompt, not a resumption.
 - **No offline listening.** Downloads, an audio cache and reconciliation on reconnect are a phase of their own; the player's track handling is kept storage-agnostic so it stays possible. Post-1.0.
 - **Mobile web works but isn't the target.** Athenaeum is a desktop/tablet browser app: mobile isn't broken, but there's no PWA install, no background audio, and no expanded mobile Now Playing. Phones are meant to use the official app or a compatible client, which this server still serves.
