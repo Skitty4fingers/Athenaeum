@@ -912,6 +912,28 @@ Phase 4 is now complete. VoxSilo's roadmap through 1.0 is done.
   icon in the address bar (or Safari's "Add to Home Screen" in the share sheet on iOS); installing and
   then loading with networking off should show the app shell rather than a browser error page.
 
+- **2026-09-02 — Fix iOS "Add to Home Screen" icon (relative hrefs), confirm offline downloads
+  genuinely work there.** User tested on real hardware: Chrome desktop installed correctly with the
+  right icon and downloads worked; iOS Safari showed no icon and didn't seem to "save as a PWA".
+  Separately confirmed iOS downloads *do* work, just visibly jump from 0% to done rather than showing
+  granular progress — expected, not a bug: `downloadItem()`'s progress callback fires once per
+  *track*, and a short single-track item (like the one likely tested) has only one step to report.
+  Researched rather than guessed at the icon/install issue (`WebSearch` — iOS PWA/apple-touch-icon
+  behavior, an Apple developer forum thread on exactly this: absolute icon paths are markedly more
+  reliable than relative ones for iOS's home-screen-icon detection, which does its own resolution
+  rather than fully honoring standard relative-URL resolution the way in-page rendering does).
+  `index.html`'s icon/manifest links were relative (`./favicon.svg` etc.) — switched to Vite's
+  `%BASE_URL%` templating for a real absolute path instead. Caught a real regression before shipping
+  it: `%BASE_URL%` here resolves to the raw `base` value with **no trailing slash**
+  (`vite.config.ts`'s `base = env.ROUTER_BASE_PATH ?? '/audiobookshelf'`, matching Vite's own
+  auto-generated asset tags which add the `/` themselves) — `%BASE_URL%favicon.svg` built into the
+  broken `/audiobookshelffavicon.svg` (concatenated with no separator, confirmed by actually reading
+  `dist/index.html` after building rather than assuming), worse than the original relative href. Fixed
+  by writing the slash explicitly (`%BASE_URL%/favicon.svg`) and re-verified the built output resolves
+  to the correct `/audiobookshelf/favicon.svg`. Also added the `sizes="180x180"` attribute to the
+  apple-touch-icon `<link>`, another documented reliability factor for iOS specifically noticing it.
+  Not yet re-verified on the user's actual iOS device — that's the next real test.
+
 ## Post-1.0 bug fixes
 
 - **2026-08-31 — Sidebar was silently truncating Series, Genres, Authors, and Narrators to 20
