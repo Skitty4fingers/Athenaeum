@@ -899,9 +899,18 @@ Phase 4 is now complete. VoxSilo's roadmap through 1.0 is done.
   no JS needed).
   Verification: build output confirmed to contain all PWA assets (`manifest.json`, all four PNGs,
   `sw.js`) under `dist/`; `sw.js` syntax-checked (`node --check`) and `manifest.json` validated as
-  parseable JSON. Deeper live verification (actual installability, a genuine cold offline load) needs
-  the real deployed HTTPS instance for the same reason the offline-listening entry above does — this
-  session's browser tool can't complete a ServiceWorker registration against `localhost` at all.
+  parseable JSON; confirmed the real deployed instance serves all three (`manifest.json`, `sw.js`,
+  `icon-192.png`) with 200s, and that `manifest.json`'s content is exactly what was written, over
+  `curl` — server-side, all correct. Genuine SW-registration/installability could not be exercised
+  live in this environment: tried against the real HTTPS deployment (not just `localhost` this time,
+  and on a fresh tab, in case the earlier failure was session- or tab-specific) and got the identical
+  `net::ERR_BLOCKED_BY_CLIENT`-rooted failure — even a plain same-origin `fetch()` to `/sw.js` failed
+  from inside the page, despite `curl` reaching the exact same URL from the host with no issue seconds
+  earlier. That rules out the server, the file, and the manifest content as the cause; it's a
+  client-side restriction in this session's browser tool that a real, unrestricted browser won't have.
+  Recommended manual check (30 seconds, any real browser): open the URL, look for Chrome's install
+  icon in the address bar (or Safari's "Add to Home Screen" in the share sheet on iOS); installing and
+  then loading with networking off should show the app shell rather than a browser error page.
 
 ## Post-1.0 bug fixes
 
